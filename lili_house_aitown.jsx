@@ -232,13 +232,85 @@ export const VOICE = {
   hall: "…",
 };
 
+// ── Drives & target selection (spec §7–8) ────────────────────────────────────
+// Лілі's four drives (Ukrainian keys), each 0..100, in display order.
+export const DRIVE_KEYS = ["натхнення", "спокій", "енергія", "тепло"];
+export const DRIVES_INIT = { натхнення: 78, спокій: 60, енергія: 52, тепло: 46 };
+
+// Tunables.
+export const DECAY = 3; // drop per drive per tick
+export const REFILL = 17; // gain on the active drive per acting tick
+export const ACT_TICKS_MAX = 4; // action ends at this many ticks…
+export const DRIVE_FULL = 94; // …or when the active drive reaches this
+
+export const DRIVE_COLORS = {
+  натхнення: "#8a52c0", // inspiration
+  спокій: "#2a9fb0", // calm
+  енергія: "#d4609a", // energy
+  тепло: "#bf942a", // warmth
+};
+
+// Lowest drive → room that satisfies it.
+export const DRIVE_ROOM = {
+  натхнення: "art", // inspiration → studio
+  енергія: "sleep", // energy → bedroom
+  спокій: "bath", // calm → bathroom
+  тепло: "kitchen", // warmth → kitchen
+};
+
+// Room being acted in → drive it refills (an office visit satisfies warmth).
+export const ROOM_DRIVE = {
+  art: "натхнення",
+  sleep: "енергія",
+  bath: "спокій",
+  kitchen: "тепло",
+  office: "тепло",
+};
+
+export const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
+
+// Decay every drive by DECAY (floored at 0).
+export function decayDrives(drives) {
+  const out = {};
+  for (const k of DRIVE_KEYS) out[k] = clamp(drives[k] - DECAY);
+  return out;
+}
+
+// Refill one drive by REFILL (capped at 100).
+export function refillDrive(drives, key) {
+  return { ...drives, [key]: clamp(drives[key] + REFILL) };
+}
+
+// An action ends once it has run long enough or the drive is essentially full.
+export function actionDone(actTicks, driveValue) {
+  return actTicks >= ACT_TICKS_MAX || driveValue >= DRIVE_FULL;
+}
+
+// Lowest drive's key (ties resolve to DRIVE_KEYS order).
+export function lowestDrive(drives) {
+  let low = DRIVE_KEYS[0];
+  for (const k of DRIVE_KEYS) if (drives[k] < drives[low]) low = k;
+  return low;
+}
+
+// Pick the OBJECTS target for the lowest drive's room. Special case: when the
+// lowest drive is warmth (тепло) and the user is in the office, Лілі comes to
+// you — the target becomes the office object.
+export function pickTarget(drives, userRoom) {
+  const low = lowestDrive(drives);
+  let room = DRIVE_ROOM[low];
+  if (low === "тепло" && userRoom === "office") room = "office";
+  return OBJECTS.find((o) => o.room === room) || null;
+}
+
 // ── Simulation state container ───────────────────────────────────────────────
-// The clock starts mid-morning; voice/log/drives/agent fields are filled in by
-// later issues (HVN-005/007). Kept minimal here so the scaffold renders alone.
+// The clock starts mid-morning; agent/player position fields are added with the
+// tick (HVN-007) and player presence (HVN-010).
 export function initialSim() {
   return {
     t: 8 * 60, // minutes into the day (08:00)
     day: 1,
+    drives: { ...DRIVES_INIT },
     voice: "",
     log: [],
   };
