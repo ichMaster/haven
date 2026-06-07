@@ -303,6 +303,52 @@ export function pickTarget(drives, userRoom) {
   return OBJECTS.find((o) => o.room === room) || null;
 }
 
+// ── Navigation (spec §9) ─────────────────────────────────────────────────────
+// Breadth-first search over `walkable`; returns the next cell {x,y} on a
+// shortest path from start to goal (one step). Returns `start` when start===goal
+// or the goal is unreachable. Movement is one cell per tick.
+export function bfsNext(start, goal, walkable) {
+  if (start.x === goal.x && start.y === goal.y) return { x: start.x, y: start.y };
+  const h = walkable.length;
+  const w = walkable[0].length;
+  const inBounds = (x, y) => x >= 0 && y >= 0 && x < w && y < h;
+  const prev = Array.from({ length: h }, () => Array.from({ length: w }, () => null));
+  const seen = Array.from({ length: h }, () => Array.from({ length: w }, () => false));
+  const NEI = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  const q = [start];
+  seen[start.y][start.x] = true;
+  let found = false;
+  for (let i = 0; i < q.length; i++) {
+    const cur = q[i];
+    if (cur.x === goal.x && cur.y === goal.y) {
+      found = true;
+      break;
+    }
+    for (const [dx, dy] of NEI) {
+      const nx = cur.x + dx;
+      const ny = cur.y + dy;
+      if (!inBounds(nx, ny) || seen[ny][nx] || !walkable[ny][nx]) continue;
+      seen[ny][nx] = true;
+      prev[ny][nx] = cur;
+      q.push({ x: nx, y: ny });
+    }
+  }
+  if (!found) return { x: start.x, y: start.y }; // unreachable
+  // Walk the prev-chain back from goal until the cell whose parent is start.
+  let node = goal;
+  let p = prev[node.y][node.x];
+  while (p && !(p.x === start.x && p.y === start.y)) {
+    node = p;
+    p = prev[node.y][node.x];
+  }
+  return { x: node.x, y: node.y };
+}
+
 // ── Simulation state container ───────────────────────────────────────────────
 // The clock starts mid-morning; agent/player position fields are added with the
 // tick (HVN-007) and player presence (HVN-010).
