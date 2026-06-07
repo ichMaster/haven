@@ -74,6 +74,47 @@ export function computeWallMap() {
   return grid;
 }
 
+// ── Derived grids (spec §4) ──────────────────────────────────────────────────
+// Boolean passability: every non-wall cell (room, door, hall) is walkable.
+export function deriveWalkable(wallMap) {
+  return wallMap.map((row) => row.map((ch) => ch !== "#"));
+}
+
+// Room key per cell. Room interiors map via LETTER; a door "+" adopts its
+// adjacent non-hall room (so standing in a doorway counts as the room you enter);
+// walls are null.
+export function deriveRoomGrid(wallMap) {
+  const NEI = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  return wallMap.map((row, y) =>
+    row.map((ch, x) => {
+      if (ch === "+") {
+        for (const [dx, dy] of NEI) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const nch = wallMap[ny][nx];
+          if (LETTER[nch] && nch !== "H") return LETTER[nch];
+        }
+        return "hall";
+      }
+      return LETTER[ch] ?? null; // room letter → key; wall "#" → null
+    }),
+  );
+}
+
+// roomAt(x,y) → room key, falling back to "hall" off-grid or on a wall cell.
+export function makeRoomAt(roomGrid) {
+  return (x, y) => {
+    if (x < 0 || y < 0 || x >= W || y >= H) return "hall";
+    return roomGrid[y][x] || "hall";
+  };
+}
+
 // ── Simulation state container ───────────────────────────────────────────────
 // The clock starts mid-morning; voice/log/drives/agent fields are filled in by
 // later issues (HVN-005/007). Kept minimal here so the scaffold renders alone.
@@ -95,6 +136,15 @@ export default function LiliHouseAITown() {
   useEffect(() => {
     simRef.current = sim;
   }, [sim]);
+
+  // Static world, derived once and memoized (never recomputed per render).
+  const wallMap = useMemo(() => computeWallMap(), []);
+  const walkable = useMemo(() => deriveWalkable(wallMap), [wallMap]);
+  const roomGrid = useMemo(() => deriveRoomGrid(wallMap), [wallMap]);
+  const roomAt = useMemo(() => makeRoomAt(roomGrid), [roomGrid]);
+  // Consumed by the simulation + render in later issues (HVN-005/007/008).
+  void walkable;
+  void roomAt;
 
   return (
     <div
