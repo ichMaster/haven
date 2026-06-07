@@ -617,6 +617,40 @@ export function Scene({ sim, wallMap, roomAt, liliDur = 0, youDur = 0 }) {
   );
 }
 
+// ── Player input (spec §12) ──────────────────────────────────────────────────
+// Arrow keys + WASD → unit direction. Letter keys are matched case-insensitively.
+export const KEY_DIRS = {
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  w: [0, -1],
+  s: [0, 1],
+  a: [-1, 0],
+  d: [1, 0],
+};
+
+export function dirForKey(key) {
+  const k = key.length === 1 ? key.toLowerCase() : key;
+  return KEY_DIRS[k] || null;
+}
+
+// Move one cell if the destination is in bounds and walkable; else stay put.
+export function tryMove(pos, dir, walkable) {
+  const nx = pos.x + dir[0];
+  const ny = pos.y + dir[1];
+  if (ny < 0 || nx < 0 || ny >= walkable.length || nx >= walkable[0].length) return pos;
+  if (!walkable[ny][nx]) return pos;
+  return { x: nx, y: ny };
+}
+
+// True when focus is in a text field — movement keys are ignored there (the
+// chat input arrives in v0.2).
+export function isTypingTarget(el) {
+  if (!el || !el.tagName) return false;
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable === true;
+}
+
 export default function LiliHouseAITown() {
   const [sim, setSim] = useState(initialSim);
 
@@ -645,6 +679,21 @@ export default function LiliHouseAITown() {
     const id = setInterval(doTick, TICK_MS);
     return () => clearInterval(id);
   }, [playing, doTick]);
+
+  // Player movement: arrows/WASD step the user one walkable cell, ignored while
+  // a text field is focused. Feeds sim.you, which the tick reads for `withYou`
+  // and the warmth→office case.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (isTypingTarget(e.target)) return;
+      const dir = dirForKey(e.key);
+      if (!dir) return;
+      e.preventDefault();
+      setSim((s) => ({ ...s, you: tryMove(s.you, dir, walkable) }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [walkable]);
 
   return (
     <div
