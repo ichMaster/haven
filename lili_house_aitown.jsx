@@ -115,6 +115,123 @@ export function makeRoomAt(roomGrid) {
   };
 }
 
+// ── Room config (spec §5) ────────────────────────────────────────────────────
+// name (label), floor (pastel tile color), color (accent for room cards),
+// verb (action word), desc (atmospheric Ukrainian interior description).
+export const ROOMS = {
+  hall: {
+    name: "Хол",
+    floor: "#ece2cf",
+    color: "#6b7280",
+    verb: "йде",
+    desc: "Світлий хол з'єднує всі кімнати дому. Тут завжди чути кроки й тихі голоси.",
+  },
+  office: {
+    name: "Мій кабінет",
+    floor: "#cfe0f2",
+    color: "#3b6fb0",
+    verb: "поруч із тобою",
+    desc: "Твій кабінет: книги, тепле світло лампи й крісло, у якому добре думається.",
+  },
+  art: {
+    name: "Майстерня Лілі",
+    floor: "#e6d6f2",
+    color: "#7a52b0",
+    verb: "малює",
+    desc: "Майстерня Лілі: запах фарби, полотна під вікном і світло, що тече на мольберт.",
+  },
+  sleep: {
+    name: "Наша спальня",
+    floor: "#f0d9ec",
+    color: "#c0518f",
+    verb: "спить",
+    desc: "Наша спальня: м'яке покривало, місяць у вікні й тиша, у якій легко заснути.",
+  },
+  kitchen: {
+    name: "Кухня",
+    floor: "#f1e7c0",
+    color: "#b0832a",
+    verb: "на кухні",
+    desc: "Кухня пахне чаєм і свіжим хлібом; на підвіконні гріється зелень.",
+  },
+  bath: {
+    name: "Ванна кімната",
+    floor: "#cfe9e6",
+    color: "#2a8f93",
+    verb: "у ванні",
+    desc: "Ванна кімната: пара, свічка й тепла вода, що змиває втому дня.",
+  },
+};
+
+// ── Objects & decor (spec §6) ────────────────────────────────────────────────
+// Interactive drive targets — the cell Лілі walks to and acts on.
+export const OBJECTS = [
+  { x: 5, y: 3, glyph: "🎨", room: "art" },
+  { x: 22, y: 2, glyph: "🛏️", room: "sleep" },
+  { x: 5, y: 11, glyph: "🍲", room: "kitchen" },
+  { x: 22, y: 12, glyph: "🛁", room: "bath" },
+  { x: 20, y: 7, glyph: "💻", room: "office" },
+];
+
+// Non-interactive props, a few per room (~24 total), for atmosphere only.
+export const DECOR = [
+  // studio
+  { x: 1, y: 1, glyph: "🖼️", room: "art" },
+  { x: 8, y: 1, glyph: "🖌️", room: "art" },
+  { x: 1, y: 6, glyph: "🪴", room: "art" },
+  { x: 9, y: 3, glyph: "🪟", room: "art" },
+  // bedroom
+  { x: 17, y: 1, glyph: "🪟", room: "sleep" },
+  { x: 27, y: 1, glyph: "🌙", room: "sleep" },
+  { x: 17, y: 4, glyph: "🪴", room: "sleep" },
+  { x: 26, y: 4, glyph: "👗", room: "sleep" },
+  // office
+  { x: 17, y: 6, glyph: "📚", room: "office" },
+  { x: 27, y: 6, glyph: "☕", room: "office" },
+  { x: 17, y: 9, glyph: "🪑", room: "office" },
+  { x: 27, y: 9, glyph: "🪟", room: "office" },
+  // kitchen
+  { x: 1, y: 8, glyph: "🫖", room: "kitchen" },
+  { x: 9, y: 8, glyph: "🪟", room: "kitchen" },
+  { x: 3, y: 8, glyph: "🍞", room: "kitchen" },
+  { x: 1, y: 13, glyph: "🔪", room: "kitchen" },
+  { x: 9, y: 13, glyph: "🪴", room: "kitchen" },
+  // bathroom
+  { x: 17, y: 11, glyph: "🚿", room: "bath" },
+  { x: 27, y: 11, glyph: "🪞", room: "bath" },
+  { x: 17, y: 13, glyph: "🧴", room: "bath" },
+  { x: 27, y: 13, glyph: "🕯️", room: "bath" },
+  // hall
+  { x: 12, y: 1, glyph: "🖼️", room: "hall" },
+  { x: 15, y: 1, glyph: "🧥", room: "hall" },
+  { x: 13, y: 13, glyph: "🪴", room: "hall" },
+];
+
+// Merged item lookup for rendering: ITEM["x,y"] → glyph (objects first).
+export const ITEM = (() => {
+  const m = {};
+  for (const o of OBJECTS) m[`${o.x},${o.y}`] = o.glyph;
+  for (const d of DECOR) m[`${d.x},${d.y}`] = d.glyph;
+  return m;
+})();
+
+// ── Voice (spec §11) ─────────────────────────────────────────────────────────
+// Fixed in-character Ukrainian line pools per acting room, plus `you` (lines for
+// when the user is near) and a `hall` placeholder. Model-generated only from v2.1.
+export const VOICE = {
+  art: [
+    "Тут народжується щось нове…",
+    "Колір лягає сам собою.",
+    "Ще один мазок — і відпущу.",
+  ],
+  sleep: ["Трохи перепочину…", "Очі злипаються.", "Подрімаю хвилинку."],
+  kitchen: ["Заварю собі чаю.", "Пахне теплом і домом.", "Щось смачненьке…"],
+  bath: ["Тепла вода — це спокій.", "Змиваю втому дня.", "Ще хвильку тиші."],
+  office: ["Побуду тут, поряд із тобою.", "Зазирнула до тебе.", "Як ти тут?"],
+  you: ["Я рада, що ти поруч.", "Сумувала за тобою.", "Розкажеш, як минув день?"],
+  hall: "…",
+};
+
 // ── Simulation state container ───────────────────────────────────────────────
 // The clock starts mid-morning; voice/log/drives/agent fields are filled in by
 // later issues (HVN-005/007). Kept minimal here so the scaffold renders alone.
