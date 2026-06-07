@@ -452,6 +452,166 @@ export function initialSim() {
   };
 }
 
+// ── Rendering (spec §13) ─────────────────────────────────────────────────────
+export const WALL_BASE = "#c9a87a"; // warm wood block
+export const WALL_TOP = "#dcc295"; // lighter top band (faux-3D edge)
+export const NIGHT_TINT = "#2a3a6a"; // day/night overlay color
+export const NIGHT_MAX = 0.24; // peak overlay opacity at night
+
+// Character sprite descriptors (spec §13).
+export const LILI_SPRITE = { body: "#b3508f", hair: "#3a2530", streak: "#ff7fc4", name: "Лілі" };
+export const YOU_SPRITE = { body: "#3a6ea5", hair: "#26303a", name: "ти" };
+
+// Overlay opacity from the world clock: 0 by day, gentle evening, peaking at
+// NIGHT_MAX deep at night and tapering through dusk (18→21) and dawn (5→7).
+export function dayNightOpacity(t) {
+  const h = (t / 60) % 24;
+  if (h >= 21 || h < 5) return NIGHT_MAX; // deep night
+  if (h >= 18) return (NIGHT_MAX * (h - 18)) / 3; // dusk ramp up
+  if (h < 7) return (NIGHT_MAX * (7 - h)) / 2; // dawn ramp down
+  return 0; // day
+}
+
+// A drawn top-down figure with a floating name tag. `dur` is the CSS glide
+// duration (interpolation lives in HVN-009; 0 here means snap).
+function Sprite({ x, y, body, hair, streak, name, dur = 0 }) {
+  const c = TILE / 2;
+  return (
+    <g
+      transform={`translate(${x * TILE}, ${y * TILE})`}
+      style={{ transition: dur ? `transform ${dur}s linear` : "none" }}
+      data-sprite={name}
+    >
+      <ellipse cx={c} cy={TILE * 0.9} rx={TILE * 0.32} ry={TILE * 0.12} fill="#00000022" />
+      <rect
+        x={TILE * 0.28}
+        y={TILE * 0.45}
+        width={TILE * 0.44}
+        height={TILE * 0.42}
+        rx={5}
+        fill={body}
+        stroke="#00000022"
+        strokeWidth="1"
+      />
+      <circle cx={c} cy={TILE * 0.4} r={TILE * 0.26} fill={hair} />
+      {streak && (
+        <rect x={c - TILE * 0.03} y={TILE * 0.18} width={TILE * 0.1} height={TILE * 0.22} rx={2} fill={streak} />
+      )}
+      <circle cx={c} cy={TILE * 0.43} r={TILE * 0.19} fill="#f1c9a5" />
+      <circle cx={c - TILE * 0.07} cy={TILE * 0.44} r={1.4} fill="#23202a" />
+      <circle cx={c + TILE * 0.07} cy={TILE * 0.44} r={1.4} fill="#23202a" />
+      <g transform={`translate(${c}, ${-TILE * 0.12})`}>
+        <rect x={-name.length * 4 - 6} y={-9} width={name.length * 8 + 12} height={15} rx={7} fill="#2a2620cc" />
+        <text textAnchor="middle" y={2} fontSize={10} fill="#fdfaf3">
+          {name}
+        </text>
+      </g>
+    </g>
+  );
+}
+
+// The whole top-down SVG scene, rendered purely from `sim` + the static world.
+// Kept as its own component so tests can mount it with a controlled `sim`.
+// `liliDur` / `youDur` are the per-sprite glide durations (HVN-009).
+export function Scene({ sim, wallMap, roomAt, liliDur = 0, youDur = 0 }) {
+  const tiles = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const isWall = wallMap[y][x] === "#";
+      if (isWall) {
+        tiles.push(
+          <g key={`t${x},${y}`}>
+            <rect x={x * TILE} y={y * TILE} width={TILE} height={TILE} fill={WALL_BASE} />
+            <rect x={x * TILE} y={y * TILE} width={TILE} height={4} fill={WALL_TOP} />
+          </g>,
+        );
+      } else {
+        const floor = ROOMS[roomAt(x, y)].floor;
+        tiles.push(
+          <rect
+            key={`t${x},${y}`}
+            x={x * TILE}
+            y={y * TILE}
+            width={TILE}
+            height={TILE}
+            fill={floor}
+            stroke="#00000010"
+            strokeWidth="1"
+          />,
+        );
+      }
+    }
+  }
+
+  const props = Object.entries(ITEM).map(([key, glyph]) => {
+    const [px, py] = key.split(",").map(Number);
+    return (
+      <text
+        key={`i${key}`}
+        x={px * TILE + TILE / 2}
+        y={py * TILE + TILE * 0.72}
+        textAnchor="middle"
+        fontSize={TILE * 0.72}
+      >
+        {glyph}
+      </text>
+    );
+  });
+
+  const showBubble = sim.voice && sim.voice !== "…";
+
+  return (
+    <svg
+      viewBox={`0 0 ${SW} ${SH}`}
+      width="100%"
+      style={{ display: "block", background: PALETTE.surround, borderRadius: 8 }}
+      role="img"
+      aria-label="Дім Лілі"
+    >
+      <g data-layer="tiles">{tiles}</g>
+      <g data-layer="props">{props}</g>
+      {/* gentle evening tint above the home, below the characters */}
+      <rect
+        x={0}
+        y={0}
+        width={SW}
+        height={SH}
+        fill={NIGHT_TINT}
+        opacity={dayNightOpacity(sim.t)}
+        style={{ pointerEvents: "none" }}
+        data-layer="daynight"
+      />
+      <Sprite x={sim.lili.x} y={sim.lili.y} {...LILI_SPRITE} dur={liliDur} />
+      <Sprite x={sim.you.x} y={sim.you.y} {...YOU_SPRITE} dur={youDur} />
+      {showBubble && (
+        <g
+          transform={`translate(${sim.lili.x * TILE}, ${sim.lili.y * TILE})`}
+          style={{ transition: liliDur ? `transform ${liliDur}s linear` : "none" }}
+          data-layer="bubble"
+        >
+          <foreignObject x={-60 + TILE / 2} y={-TILE * 1.7} width={120} height={TILE * 1.5}>
+            <div
+              style={{
+                background: "#fdf6e8",
+                border: "1px solid #d9cdae",
+                borderRadius: 10,
+                padding: "4px 8px",
+                fontSize: 11,
+                color: "#3a3530",
+                textAlign: "center",
+                boxShadow: "0 1px 3px #0002",
+                lineHeight: 1.2,
+              }}
+            >
+              {sim.voice}
+            </div>
+          </foreignObject>
+        </g>
+      )}
+    </svg>
+  );
+}
+
 export default function LiliHouseAITown() {
   const [sim, setSim] = useState(initialSim);
 
@@ -491,15 +651,7 @@ export default function LiliHouseAITown() {
       }}
     >
       <div style={{ maxWidth: SW, margin: "0 auto" }}>
-        <svg
-          viewBox={`0 0 ${SW} ${SH}`}
-          width="100%"
-          style={{ display: "block", background: PALETTE.surround, borderRadius: 8 }}
-          role="img"
-          aria-label="Дім Лілі"
-        >
-          {/* Scene layers (tiles, props, sprites, bubble, day/night) — HVN-008+ */}
-        </svg>
+        <Scene sim={sim} wallMap={wallMap} roomAt={roomAt} />
 
         {/* Controls (the full panel — drive bars, log, room cards — is HVN-011). */}
         <div
