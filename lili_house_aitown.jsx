@@ -651,6 +651,31 @@ export function isTypingTarget(el) {
   return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable === true;
 }
 
+// ── Surrounding UI (spec §15) ────────────────────────────────────────────────
+// A 10-block bar (█ filled / ░ empty) for a 0..100 drive value.
+export function barString(v, n = 10) {
+  const f = clamp(Math.round(v / 10), 0, n);
+  return "█".repeat(f) + "░".repeat(n - f);
+}
+
+// Decide the room cards: one shared "together" card when both share a room,
+// otherwise one card each for Лілі and the user.
+export function roomView(liliRoom, youRoom) {
+  if (liliRoom === youRoom) return { together: true, room: liliRoom };
+  return { together: false, lili: liliRoom, you: youRoom };
+}
+
+const cardStyle = (accent) => ({
+  flex: "1 1 220px",
+  borderLeft: `4px solid ${accent}`,
+  background: "#fffdf8",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 13,
+  color: "#3a3530",
+  boxShadow: "0 1px 2px #0001",
+});
+
 export default function LiliHouseAITown() {
   const [sim, setSim] = useState(initialSim);
 
@@ -733,6 +758,95 @@ export default function LiliHouseAITown() {
           <span style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
             День {sim.day} · {fmtTime(sim.t)}
           </span>
+        </div>
+
+        {/* Drive bars */}
+        <div
+          data-panel="drives"
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto",
+            gap: "3px 10px",
+            alignItems: "center",
+          }}
+        >
+          {DRIVE_KEYS.map((k) => (
+            <React.Fragment key={k}>
+              <span style={{ fontSize: 13, color: "#4a443c" }}>{k}</span>
+              <span
+                data-bar={k}
+                style={{
+                  fontFamily: "ui-monospace, monospace",
+                  color: DRIVE_COLORS[k],
+                  letterSpacing: 1,
+                }}
+              >
+                {barString(sim.drives[k])}
+              </span>
+              <span style={{ fontSize: 12, color: "#8a8276", fontVariantNumeric: "tabular-nums" }}>
+                {Math.round(sim.drives[k])}
+              </span>
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Action line */}
+        <div data-action style={{ marginTop: 10, fontSize: 14, color: "#3a3530" }}>
+          ▸ {sim.action || "…"}
+        </div>
+
+        {/* Room cards — Лілі's room and yours, or a shared card when together */}
+        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {(() => {
+            const rv = roomView(roomAt(sim.lili.x, sim.lili.y), roomAt(sim.you.x, sim.you.y));
+            if (rv.together) {
+              const r = ROOMS[rv.room];
+              return (
+                <div data-card="together" style={cardStyle(r.color)}>
+                  <b>Ви разом тут · {r.name}</b>
+                  <div style={{ marginTop: 4, color: "#6b6258" }}>{r.desc}</div>
+                </div>
+              );
+            }
+            const rl = ROOMS[rv.lili];
+            const ry = ROOMS[rv.you];
+            return (
+              <>
+                <div data-card="lili" style={cardStyle(rl.color)}>
+                  <b>Лілі · {rl.name}</b>
+                  <div style={{ marginTop: 4, color: "#6b6258" }}>{rl.desc}</div>
+                </div>
+                <div data-card="you" style={cardStyle(ry.color)}>
+                  <b>Ти · {ry.name}</b>
+                  <div style={{ marginTop: 4, color: "#6b6258" }}>{ry.desc}</div>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+
+        {/* Event log — last 5 lines, fading with age (newest first) */}
+        <div data-panel="log" style={{ marginTop: 10 }}>
+          {sim.log
+            .slice()
+            .reverse()
+            .map((e, i) => (
+              <div
+                key={`${e.day}-${e.t}-${i}`}
+                style={{ opacity: Math.max(0.35, 1 - i * 0.16), fontSize: 13, color: "#4a443c" }}
+              >
+                <span style={{ color: "#a59c8c", fontVariantNumeric: "tabular-nums" }}>
+                  {fmtTime(e.t)}
+                </span>{" "}
+                {e.line}
+              </div>
+            ))}
+        </div>
+
+        {/* Movement hint */}
+        <div style={{ marginTop: 10, fontSize: 12, color: "#8a8276" }}>
+          Рухайтесь: ← ↑ → ↓ або WASD · розмова з Лілі — у v0.2
         </div>
       </div>
     </div>
