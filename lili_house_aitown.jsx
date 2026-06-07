@@ -462,6 +462,11 @@ export const NIGHT_MAX = 0.24; // peak overlay opacity at night
 export const LILI_SPRITE = { body: "#b3508f", hair: "#3a2530", streak: "#ff7fc4", name: "Лілі" };
 export const YOU_SPRITE = { body: "#3a6ea5", hair: "#26303a", name: "ти" };
 
+// Glide durations (spec §14) — "frontend in motion". Лілі glides ≈ the tick so
+// her step looks continuous; the player is snappier for responsive control.
+export const GLIDE_LILI = 0.7; // seconds (≈ the 850 ms tick)
+export const GLIDE_YOU = 0.18; // seconds
+
 // Overlay opacity from the world clock: 0 by day, gentle evening, peaking at
 // NIGHT_MAX deep at night and tapering through dusk (18→21) and dawn (5→7).
 export function dayNightOpacity(t) {
@@ -651,7 +656,13 @@ export default function LiliHouseAITown() {
       }}
     >
       <div style={{ maxWidth: SW, margin: "0 auto" }}>
-        <Scene sim={sim} wallMap={wallMap} roomAt={roomAt} />
+        <Scene
+          sim={sim}
+          wallMap={wallMap}
+          roomAt={roomAt}
+          liliDur={GLIDE_LILI}
+          youDur={GLIDE_YOU}
+        />
 
         {/* Controls (the full panel — drive bars, log, room cards — is HVN-011). */}
         <div
