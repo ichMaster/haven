@@ -349,14 +349,104 @@ export function bfsNext(start, goal, walkable) {
   return { x: node.x, y: node.y };
 }
 
+// ── Simulation tick (spec §10) ───────────────────────────────────────────────
+export const TICK_MS = 850; // pace of the interval while playing
+export const MIN_PER_TICK = 9; // world minutes advanced per tick
+export const DAY_MIN = 1440; // minutes in a day
+export const LOG_LEN = 5; // event-log length
+
+const pickLine = (pool, rng) => pool[Math.floor(rng() * pool.length)];
+
+// Format minutes-into-day as HH:MM (24h).
+export function fmtTime(t) {
+  const m = ((t % DAY_MIN) + DAY_MIN) % DAY_MIN;
+  const hh = String(Math.floor(m / 60)).padStart(2, "0");
+  const mm = String(m % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+// Pure decision loop: given the current sim state and world deps, return the
+// next state. Deterministic for a fixed `rng` (default Math.random) so the tick
+// is fully testable. Order mirrors spec §10 steps 1–7.
+export function advance(state, { walkable, roomAt, rng = Math.random }) {
+  // 1. clock
+  let t = state.t + MIN_PER_TICK;
+  let day = state.day;
+  if (t >= DAY_MIN) {
+    t -= DAY_MIN;
+    day += 1;
+  }
+
+  // 2. decay every drive
+  let drives = decayDrives(state.drives);
+
+  // 3. where is Лілі, and is the user with her?
+  const lili = { ...state.lili };
+  let target = state.target ? { ...state.target } : null;
+  const here = roomAt(lili.x, lili.y);
+  const youRoom = roomAt(state.you.x, state.you.y);
+  const withYou = here === youRoom;
+
+  let action = state.action;
+  let voice = state.voice;
+  let newLine = null;
+
+  if (lili.acting && target) {
+    // 4. acting: refill the target drive, maybe acknowledge the user, then end
+    lili.actTicks += 1;
+    const driveKey = ROOM_DRIVE[target.room];
+    drives = refillDrive(drives, driveKey);
+    const r = ROOMS[target.room];
+    action = `${r.verb} (${r.name})`;
+    if (withYou) {
+      if (rng() < 0.5) action = `${r.verb}, з тобою поруч`;
+      if (rng() < 0.6) newLine = pickLine(VOICE.you, rng);
+    }
+    if (actionDone(lili.actTicks, drives[driveKey])) {
+      lili.acting = false;
+      lili.actTicks = 0;
+      target = null;
+    }
+  } else if (target) {
+    // 5. has a target: act on arrival, else step one cell toward it
+    if (lili.x === target.x && lili.y === target.y) {
+      lili.acting = true;
+      lili.actTicks = 0;
+      const r = ROOMS[target.room];
+      action = `${r.verb} (${r.name})`;
+      newLine = pickLine(VOICE[target.room], rng);
+    } else {
+      const next = bfsNext(lili, target, walkable);
+      lili.x = next.x;
+      lili.y = next.y;
+      action = `йде до: ${ROOMS[target.room].name}`;
+    }
+  } else {
+    // 6. no target: choose the room of the lowest drive
+    target = pickTarget(drives, youRoom);
+    if (target) action = `йде до: ${ROOMS[target.room].name}`;
+  }
+
+  // 7. a new, non-placeholder line updates the bubble and the rolling log
+  let log = state.log;
+  if (newLine && newLine !== "…") {
+    voice = newLine;
+    log = [...state.log, { t, day, line: newLine }].slice(-LOG_LEN);
+  }
+
+  return { ...state, t, day, drives, lili, target, action, voice, log };
+}
+
 // ── Simulation state container ───────────────────────────────────────────────
-// The clock starts mid-morning; agent/player position fields are added with the
-// tick (HVN-007) and player presence (HVN-010).
 export function initialSim() {
   return {
     t: 8 * 60, // minutes into the day (08:00)
     day: 1,
     drives: { ...DRIVES_INIT },
+    lili: { x: 5, y: 3, acting: false, actTicks: 0 }, // starts in the studio
+    you: { x: 22, y: 8 }, // starts in the office ("Мій кабінет")
+    target: null,
+    action: "",
     voice: "",
     log: [],
   };
@@ -377,9 +467,19 @@ export default function LiliHouseAITown() {
   const walkable = useMemo(() => deriveWalkable(wallMap), [wallMap]);
   const roomGrid = useMemo(() => deriveRoomGrid(wallMap), [wallMap]);
   const roomAt = useMemo(() => makeRoomAt(roomGrid), [roomGrid]);
-  // Consumed by the simulation + render in later issues (HVN-005/007/008).
-  void walkable;
-  void roomAt;
+
+  // One tick of the world: advance the pure reducer with live RNG.
+  const doTick = useCallback(() => {
+    setSim((s) => advance(s, { walkable, roomAt, rng: Math.random }));
+  }, [walkable, roomAt]);
+
+  // Run the clock on a fixed interval while playing; pause stops it.
+  const [playing, setPlaying] = useState(true);
+  useEffect(() => {
+    if (!playing) return undefined;
+    const id = setInterval(doTick, TICK_MS);
+    return () => clearInterval(id);
+  }, [playing, doTick]);
 
   return (
     <div
@@ -400,6 +500,28 @@ export default function LiliHouseAITown() {
         >
           {/* Scene layers (tiles, props, sprites, bubble, day/night) — HVN-008+ */}
         </svg>
+
+        {/* Controls (the full panel — drive bars, log, room cards — is HVN-011). */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 10,
+            color: "#3a3530",
+            fontSize: 14,
+          }}
+        >
+          <button onClick={() => setPlaying((p) => !p)}>
+            {playing ? "⏸ Пауза" : "▶ Грати"}
+          </button>
+          <button onClick={doTick} disabled={playing}>
+            ⏭ Крок
+          </button>
+          <span style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
+            День {sim.day} · {fmtTime(sim.t)}
+          </span>
+        </div>
       </div>
     </div>
   );
