@@ -108,10 +108,12 @@ describe("HVN-007 — simulation tick", () => {
       drives: { натхнення: 80, спокій: 80, енергія: 80, тепло: 50 },
     });
     expect(s.action).toContain("з тобою поруч");
-    expect(VOICE.you).toContain(s.voice);
+    expect(VOICE.you).toContain(s.voice); // shown as the speech bubble
+    // …but a conversational `you` aside is NOT recorded in the event log
+    expect(s.log.some((e) => VOICE.you.includes(e.line))).toBe(false);
   });
 
-  it("keeps only the last 5 log lines, each timestamped", () => {
+  it("keeps only the last 5 log lines (events only), each timestamped", () => {
     // Force many begin-acting events to generate lines.
     let s = initialSim();
     for (let i = 0; i < 60; i++) s = step(s);
@@ -119,6 +121,8 @@ describe("HVN-007 — simulation tick", () => {
     for (const e of s.log) {
       expect(typeof e.t).toBe("number");
       expect(typeof e.line).toBe("string");
+      // the log holds ambient events, never conversational `you` asides
+      expect(VOICE.you).not.toContain(e.line);
     }
   });
 

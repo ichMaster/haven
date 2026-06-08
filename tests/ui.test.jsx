@@ -41,21 +41,26 @@ describe("HVN-011 — panel render (mounted)", () => {
     expect(container.querySelector("[data-action]").textContent).toContain("▸");
   });
 
-  it("shows both room cards (Лілі in studio, you in office) by default", () => {
+  it("shows a thought card for the agent at home (Лілі), not the player", () => {
     const { container } = render(<LiliHouseAITown />);
     const lili = container.querySelector('[data-card="lili"]');
-    const you = container.querySelector('[data-card="you"]');
     expect(lili).toBeTruthy();
-    expect(you).toBeTruthy();
-    expect(lili.textContent).toContain(ROOMS.art.name); // Майстерня Лілі
-    expect(you.textContent).toContain(ROOMS.office.name); // Мій кабінет
-    expect(container.querySelector('[data-card="together"]')).toBeNull();
-    expect(lili.textContent).toContain(ROOMS.art.desc);
+    expect(lili.textContent).toContain("Лілі");
+    expect(lili.textContent).toContain(ROOMS.art.name); // her current room (studio)
+    expect(lili.textContent).toContain("💭"); // a thought/observation
+    expect(container.querySelector('[data-card="you"]')).toBeNull(); // player isn't an agent
   });
 
-  it("renders the event-log container and the movement hint", () => {
+  it("shows the movement hint and no event-log panel", () => {
     const { container } = render(<LiliHouseAITown />);
-    expect(container.querySelector('[data-panel="log"]')).toBeTruthy();
     expect(container.textContent).toContain("WASD");
+    expect(container.querySelector('[data-panel="log"]')).toBeNull(); // log removed
+  });
+
+  it("shows drives for the agent(s) in the location — Лілі at home", () => {
+    const { container } = render(<LiliHouseAITown />);
+    const drives = container.querySelector('[data-panel="drives"]');
+    expect(drives.querySelector('[data-agent-drives="Лілі"]')).toBeTruthy();
+    expect(drives.querySelectorAll("[data-bar]")).toHaveLength(DRIVE_KEYS.length); // one agent × 4
   });
 });

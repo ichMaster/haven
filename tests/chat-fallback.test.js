@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   shapeReply,
   pickFallback,
@@ -6,6 +6,8 @@ import {
   OFFLINE_LINE,
   FALLBACK_LINES,
 } from "../lili_house_aitown.jsx";
+
+afterEach(() => vi.unstubAllEnvs());
 
 const ctx = { liliRoom: "art", liliAction: "малює", youRoom: "office", together: false };
 const zero = () => 0; // deterministic rng → FALLBACK_LINES[0]
@@ -70,7 +72,9 @@ describe("HVN-015 — safeAskLili", () => {
   });
 
   it("returns the offline line when no key and no injected client", async () => {
-    // test env has no VITE_ANTHROPIC_API_KEY and we pass no client
+    // Force "no key" regardless of any local .env, so the test never reaches the
+    // real client / network.
+    vi.stubEnv("VITE_ANTHROPIC_API_KEY", "");
     const reply = await safeAskLili({ text: "x", context: ctx });
     expect(reply).toBe(OFFLINE_LINE);
   });

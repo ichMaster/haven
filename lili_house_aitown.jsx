@@ -231,8 +231,12 @@ export const VOICE = {
   sleep: ["Трохи перепочину…", "Очі злипаються.", "Подрімаю хвилинку."],
   kitchen: ["Заварю собі чаю.", "Пахне теплом і домом.", "Щось смачненьке…"],
   bath: ["Тепла вода — це спокій.", "Змиваю втому дня.", "Ще хвильку тиші."],
-  office: ["Побуду тут, поряд із тобою.", "Зазирнула до тебе.", "Як ти тут?"],
-  you: ["Я рада, що ти поруч.", "Сумувала за тобою.", "Розкажеш, як минув день?"],
+  // Room pools are ambient activity lines (logged as events) — declarative, no
+  // questions / direct address.
+  office: ["Влаштувалася в кабінеті.", "Тепле світло лампи, тиша.", "Гортаю книжку при лампі."],
+  // `you` lines are conversational asides shown only as the speech bubble when
+  // you are together — never logged (chat belongs in the chat panel).
+  you: ["Я рада, що ти поруч.", "Сумувала за тобою.", "Добре, що ти тут."],
   hall: "…",
 };
 
@@ -354,7 +358,7 @@ export function bfsNext(start, goal, walkable) {
 }
 
 // ── Simulation tick (spec §10) ───────────────────────────────────────────────
-export const TICK_MS = 850; // pace of the interval while playing
+export const TICK_MS = 850; // pace of the world tick (always running)
 export const MIN_PER_TICK = 9; // world minutes advanced per tick
 export const DAY_MIN = 1440; // minutes in a day
 export const LOG_LEN = 5; // event-log length
@@ -393,7 +397,8 @@ export function advance(state, { walkable, roomAt, rng = Math.random }) {
 
   let action = state.action;
   let voice = state.voice;
-  let newLine = null;
+  let newLine = null; // ambient activity line → speech bubble AND event log
+  let bubbleLine = null; // conversational aside to the user → bubble only (not logged)
 
   if (lili.acting && target) {
     // 4. acting: refill the target drive, maybe acknowledge the user, then end
@@ -404,7 +409,7 @@ export function advance(state, { walkable, roomAt, rng = Math.random }) {
     action = `${r.verb} (${r.name})`;
     if (withYou) {
       if (rng() < 0.5) action = `${r.verb}, з тобою поруч`;
-      if (rng() < 0.6) newLine = pickLine(VOICE.you, rng);
+      if (rng() < 0.6) bubbleLine = pickLine(VOICE.you, rng);
     }
     if (actionDone(lili.actTicks, drives[driveKey])) {
       lili.acting = false;
@@ -431,11 +436,14 @@ export function advance(state, { walkable, roomAt, rng = Math.random }) {
     if (target) action = `йде до: ${ROOMS[target.room].name}`;
   }
 
-  // 7. a new, non-placeholder line updates the bubble and the rolling log
+  // 7. ambient activity lines update the bubble AND the event log; a
+  // conversational aside to the user updates only the bubble (chat stays in chat).
   let log = state.log;
   if (newLine && newLine !== "…") {
     voice = newLine;
     log = [...state.log, { t, day, line: newLine }].slice(-LOG_LEN);
+  } else if (bubbleLine && bubbleLine !== "…") {
+    voice = bubbleLine;
   }
 
   return { ...state, t, day, drives, lili, target, action, voice, log };
@@ -670,15 +678,50 @@ export function roomView(liliRoom, youRoom) {
 }
 
 const cardStyle = (accent) => ({
-  flex: "1 1 220px",
+  flex: "0 0 auto", // size to content height (cards stack vertically beside the scene)
   borderLeft: `4px solid ${accent}`,
   background: "#fffdf8",
   borderRadius: 8,
-  padding: "8px 10px",
+  padding: "6px 9px",
   fontSize: 13,
   color: "#3a3530",
   boxShadow: "0 1px 2px #0001",
 });
+
+// Compact room-card description: clamp to at most four lines so cards stay short.
+const cardDescStyle = {
+  marginTop: 2,
+  color: "#6b6258",
+  fontSize: 12,
+  lineHeight: 1.3,
+  display: "-webkit-box",
+  WebkitBoxOrient: "vertical",
+  WebkitLineClamp: 4,
+  overflow: "hidden",
+};
+
+// One agent's drive bars (name + the four 0..100 drives). Shown per agent
+// present in the active location.
+function AgentDrives({ name, color, drives }) {
+  return (
+    <div data-agent-drives={name} style={{ minWidth: 170 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, fontSize: 13, color: "#3a3530" }}>
+        <span style={{ width: 9, height: 9, borderRadius: "50%", background: color, display: "inline-block" }} />
+        <b>{name}</b>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px", alignItems: "center" }}>
+        {DRIVE_KEYS.map((k) => (
+          <React.Fragment key={k}>
+            <span style={{ fontSize: 12, color: "#4a443c" }}>{k}</span>
+            <span data-bar={k} style={{ fontFamily: "ui-monospace, monospace", color: DRIVE_COLORS[k], letterSpacing: 1 }}>
+              {barString(drives[k])}
+            </span>
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── Chat: canon & system-prompt assembly (spec v0.2 §HVN-012) ────────────────
 // Лілі's fixed persona. The hard voice rules live here so every reply is short,
@@ -809,6 +852,334 @@ export async function safeAskLili({ text, context, history = [], client, ask = a
   }
 }
 
+// ── Town map (preview) ───────────────────────────────────────────────────────
+// An 8×4 grid where each cell is a location ("scene"), spanning the full width
+// below both columns. Only Лілі's house is available now; the rest are named
+// placeholders for the future town (ROADMAP v3.1 — with Лілі's mountain/water
+// motifs). The grey gaps read as streets.
+// available cells are visitable; `loc` ties a cell to a LOCATION you can travel to.
+const T = (emoji, label, kind, available = false, loc = null) => ({ emoji, label, kind, available, loc });
+export const TOWN = [
+  // row 0
+  T("🏠", "Дім Лілі", "house", true, "house"), T("🏡", "Сусіди", "house"), T("🏘️", "Котедж", "house"), T("🌳", "Парк", "nature"), T("🌊", "Озеро", "water"), T("⛵", "Набережна", "water"), T("🏔️", "Гори", "mountain"), T("🌲", "Ліс", "nature"),
+  // row 1
+  T("🏢", "Квартири", "house"), T("🏫", "Школа", "civic"), T("📚", "Книгарня", "shop"), T("☕", "Кафе", "shop", true, "cafe"), T("🥐", "Пекарня", "shop"), T("🛒", "Супермаркет", "shop"), T("🌷", "Сад", "nature"), T("⛰️", "Пагорб", "mountain"),
+  // row 2
+  T("🏛️", "Музей", "civic"), T("🖼️", "Галерея", "civic"), T("🏥", "Лікарня", "civic"), T("🏦", "Банк", "civic"), T("📮", "Пошта", "civic"), T("💊", "Аптека", "shop"), T("⛲", "Площа", "civic"), T("🌾", "Поле", "nature"),
+  // row 3
+  T("🏟️", "Стадіон", "civic"), T("🎭", "Театр", "civic"), T("⛪", "Церква", "civic"), T("🚉", "Вокзал", "civic"), T("🌉", "Міст", "water"), T("🏞️", "Річка", "water"), T("🗼", "Маяк", "water"), T("🌊", "Море", "water"),
+];
+
+// The town location currently shown as the scene (the one available cell).
+export const CURRENT_LOCATION = TOWN.find((c) => c.available) ?? TOWN[0];
+
+const TOWN_BG = {
+  house: "#efe6f7",
+  shop: "#f6ead2",
+  civic: "#dce7f5",
+  nature: "#d2e8c6",
+  water: "#cfe2ee",
+  mountain: "#e6ded3",
+};
+
+// Inhabitants of Лілі's house (icon color + name). Reuses the sprite colors.
+export const CHARACTERS = [
+  { id: "lili", name: LILI_SPRITE.name, color: LILI_SPRITE.body },
+  { id: "you", name: YOU_SPRITE.name, color: YOU_SPRITE.body },
+];
+
+// Who is in which town cell (cell index = position in TOWN). Лілі and the player
+// are home (cell 0); the rest are other inhabitants simulated around the town so
+// the map feels alive. Real autonomous agents arrive in v1.3 — for now this is a
+// fixed preview of a populated town.
+export const TOWN_RESIDENTS = {
+  0: CHARACTERS, // 🏠 Дім Лілі — Лілі + ти
+  1: [{ id: "oksana", name: "Оксана", color: "#c98a3a" }], // 🏡 Сусіди
+  3: [
+    // 🌳 Парк
+    { id: "nina", name: "Ніна", color: "#4f9a52" },
+    { id: "bohdan", name: "Богдан", color: "#5a8f4f" },
+  ],
+  6: [{ id: "orest", name: "Орест", color: "#7a6a55" }], // 🏔️ Гори
+  9: [
+    // 🏫 Школа
+    { id: "ivan", name: "Іван", color: "#3b6fb0" },
+    { id: "solomiya", name: "Соломія", color: "#a05a7a" },
+  ],
+  10: [{ id: "olya", name: "Оля", color: "#8a6fc0" }], // 📚 Книгарня
+  11: [
+    // ☕ Кафе
+    { id: "marko", name: "Марко", color: "#3a8f6f" },
+    { id: "zoya", name: "Зоя", color: "#c07a9a" },
+  ],
+  13: [
+    // 🛒 Супермаркет
+    { id: "serhiy", name: "Сергій", color: "#b0593a" },
+    { id: "katrya", name: "Катря", color: "#b08a3a" },
+  ],
+  17: [{ id: "daryna", name: "Дарина", color: "#9a4f7a" }], // 🖼️ Галерея
+  18: [{ id: "petro", name: "Петро", color: "#2a8f93" }], // 🏥 Лікарня
+  22: [
+    // ⛲ Площа — невеликий гурт
+    { id: "yuriy", name: "Юрій", color: "#3a6e8f" },
+    { id: "myroslava", name: "Мирослава", color: "#9a6f3a" },
+    { id: "ostap", name: "Остап", color: "#6f8f3a" },
+  ],
+  24: [{ id: "taras", name: "Тарас", color: "#6f7ac0" }], // 🏟️ Стадіон
+  30: [{ id: "hryts", name: "Гриць", color: "#9a8a3a" }], // 🗼 Маяк
+};
+
+// ── Other locations (visitable scenes, v3.1 preview) ─────────────────────────
+// Each is a simple bordered open-room map the same grid size as the house, with
+// themed props and resident agents that wander. The house keeps its rich drive
+// simulation; these are lighter "visit" scenes you can travel to.
+function makeLocationWorld({ id, floor, props = [], interior = [3, 2, W - 4, H - 3] }) {
+  const [x0, y0, x1, y1] = interior;
+  const wallMap = Array.from({ length: H }, (_, y) =>
+    Array.from({ length: W }, (_, x) => (x >= x0 && x <= x1 && y >= y0 && y <= y1 ? "." : "#")),
+  );
+  const walkable = wallMap.map((row) => row.map((ch) => ch !== "#"));
+  const items = {};
+  for (const p of props) items[`${p.x},${p.y}`] = p.glyph;
+  return { id, wallMap, walkable, floor, items, interior };
+}
+
+// Pick a random walkable cell (rejection sampling; rooms are mostly open).
+export function randomWalkable(walkable, rng = Math.random) {
+  const h = walkable.length;
+  const w = walkable[0].length;
+  for (let i = 0; i < 80; i++) {
+    const x = Math.floor(rng() * w);
+    const y = Math.floor(rng() * h);
+    if (walkable[y][x]) return { x, y };
+  }
+  return { x: 0, y: 0 };
+}
+
+// One wander step: head to the current target, pick a new one on arrival, step
+// one cell via BFS. Pure (rng injectable). Keeps visit-location agents alive.
+export function wanderStep(agent, walkable, rng = Math.random) {
+  let target = agent.target;
+  if (!target || (agent.x === target.x && agent.y === target.y)) {
+    target = randomWalkable(walkable, rng);
+  }
+  const next = bfsNext({ x: agent.x, y: agent.y }, target, walkable);
+  return { ...agent, x: next.x, y: next.y, target };
+}
+
+// Visitable locations beyond the house. For now just the café — its own map
+// with two inhabitants (Марко, Зоя) who gently wander.
+export const LOCATIONS = {
+  cafe: {
+    id: "cafe",
+    name: "Кафе",
+    emoji: "☕",
+    playerStart: { x: 6, y: 10 },
+    agents: [
+      { id: "marko", name: "Марко", color: "#3a8f6f", start: { x: 8, y: 5 }, drives: { натхнення: 58, спокій: 74, енергія: 52, тепло: 82 }, thought: "Заварюю каву — ранок тихий і теплий." },
+      { id: "zoya", name: "Зоя", color: "#c07a9a", start: { x: 18, y: 6 }, drives: { натхнення: 86, спокій: 48, енергія: 70, тепло: 60 }, thought: "Накидаю ескіз на серветці, поки чекаю." },
+    ],
+    world: makeLocationWorld({
+      id: "cafe",
+      floor: "#f1e7c0",
+      interior: [4, 3, 24, 11],
+      props: [
+        { x: 7, y: 4, glyph: "☕" }, { x: 11, y: 4, glyph: "🍰" }, { x: 15, y: 4, glyph: "🪑" },
+        { x: 19, y: 4, glyph: "🪑" }, { x: 9, y: 8, glyph: "🫖" }, { x: 16, y: 9, glyph: "🪴" },
+        { x: 22, y: 6, glyph: "🪟" },
+      ],
+    }),
+  },
+};
+
+// Display metadata for the active-location header (house + the café).
+export const LOCATION_META = {
+  house: { emoji: "🏠", name: "Дім Лілі" },
+  cafe: { emoji: "☕", name: "Кафе" },
+};
+
+// Initial visit state when entering a location: the player at the start cell and
+// the location's agents at their starting cells (they wander from there).
+export function makeVisit(locId) {
+  const loc = LOCATIONS[locId];
+  return {
+    id: locId,
+    player: { ...loc.playerStart },
+    agents: (loc.agents || []).map((a) => ({ ...a, x: a.start.x, y: a.start.y, target: null })),
+  };
+}
+
+// A visit scene: tiles (single floor color), props, the location's agents
+// (sprite + name tag), and the player.
+export function LocationScene({ world, agents = [], player, dayT = 0 }) {
+  const tiles = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (world.wallMap[y][x] === "#") {
+        tiles.push(
+          <g key={`t${x},${y}`}>
+            <rect x={x * TILE} y={y * TILE} width={TILE} height={TILE} fill={WALL_BASE} />
+            <rect x={x * TILE} y={y * TILE} width={TILE} height={4} fill={WALL_TOP} />
+          </g>,
+        );
+      } else {
+        tiles.push(
+          <rect
+            key={`t${x},${y}`}
+            x={x * TILE}
+            y={y * TILE}
+            width={TILE}
+            height={TILE}
+            fill={world.floor}
+            stroke="#00000010"
+            strokeWidth="1"
+          />,
+        );
+      }
+    }
+  }
+  const props = Object.entries(world.items).map(([key, glyph]) => {
+    const [px, py] = key.split(",").map(Number);
+    return (
+      <text key={`i${key}`} x={px * TILE + TILE / 2} y={py * TILE + TILE * 0.72} textAnchor="middle" fontSize={TILE * 0.72}>
+        {glyph}
+      </text>
+    );
+  });
+  return (
+    <svg
+      viewBox={`0 0 ${SW} ${SH}`}
+      width="100%"
+      style={{ display: "block", background: PALETTE.surround, borderRadius: 8 }}
+      role="img"
+      aria-label="Локація"
+    >
+      <g data-layer="tiles">{tiles}</g>
+      <g data-layer="props">{props}</g>
+      <rect x={0} y={0} width={SW} height={SH} fill={NIGHT_TINT} opacity={dayNightOpacity(dayT)} style={{ pointerEvents: "none" }} data-layer="daynight" />
+      {agents.map((a) => (
+        <Sprite key={a.id} x={a.x} y={a.y} body={a.color} hair="#3a2f2a" name={a.name} dur={0.6} />
+      ))}
+      <Sprite x={player.x} y={player.y} {...YOU_SPRITE} dur={GLIDE_YOU} />
+    </svg>
+  );
+}
+
+export function TownMap({ active = "house", onTravel } = {}) {
+  return (
+    <div data-town style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 14, color: "#3a3530" }}>Карта міста</div>
+      <div style={{ fontSize: 12, color: "#8a8276", margin: "2px 0 8px" }}>
+        Натисніть доступну локацію, щоб перейти. Зараз відкриті: Дім Лілі та Кафе.
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(8, 1fr)",
+          gap: 6,
+          background: "#c2c6cb", // вулиці (проміжки між кварталами)
+          padding: 6,
+          borderRadius: 10,
+        }}
+      >
+        {TOWN.map((c, i) => {
+          const residents = TOWN_RESIDENTS[i] || [];
+          const travelable = !!c.loc;
+          const isActive = travelable && c.loc === active;
+          const go = travelable && onTravel ? () => onTravel(c.loc) : undefined;
+          return (
+            <div
+              key={i}
+              data-town-cell={c.kind}
+              data-available={c.available ? "true" : "false"}
+              data-loc={c.loc || undefined}
+              data-active={isActive ? "true" : undefined}
+              role={travelable ? "button" : undefined}
+              tabIndex={travelable ? 0 : undefined}
+              onClick={go}
+              onKeyDown={go ? (e) => (e.key === "Enter" || e.key === " ") && go() : undefined}
+              title={travelable ? (isActive ? `${c.label} — ви тут` : `${c.label} — перейти`) : c.label}
+              style={{
+                position: "relative",
+                minHeight: 62,
+                borderRadius: 7,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                padding: "4px 2px",
+                cursor: travelable ? "pointer" : "default",
+                background: c.available ? "#e7d8f5" : TOWN_BG[c.kind] || "#e9e6e0",
+                border: isActive
+                  ? "2px solid #7a52b0"
+                  : travelable
+                    ? "2px solid #b48fd0"
+                    : "1px solid #00000012",
+                boxShadow: isActive ? "0 0 0 3px #7a52b033" : "none",
+                opacity: c.available ? 1 : 0.92,
+                color: "#3a3530",
+                textAlign: "center",
+              }}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>{c.emoji}</span>
+              <span
+                style={{
+                  fontSize: 8.5,
+                  lineHeight: 1.05,
+                  fontWeight: c.available ? 700 : 400,
+                  padding: "0 2px",
+                  wordBreak: "break-word",
+                }}
+              >
+                {c.label}
+              </span>
+              {residents.length > 0 && (
+                <div
+                  data-residents
+                  style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}
+                >
+                  {residents.map((r) => (
+                    <span
+                      key={r.id}
+                      data-resident={r.id}
+                      title={r.name}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 2,
+                        background: "#ffffffcc",
+                        borderRadius: 7,
+                        padding: "0 3px",
+                        fontSize: 8,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: r.color,
+                          display: "inline-block",
+                        }}
+                      />
+                      {r.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <span style={{ position: "absolute", top: 2, right: 3, fontSize: 9 }}>
+                {isActive ? "📍" : travelable ? "🚪" : "🔒"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
   const [sim, setSim] = useState(initialSim);
 
@@ -825,18 +1196,41 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
   const roomGrid = useMemo(() => deriveRoomGrid(wallMap), [wallMap]);
   const roomAt = useMemo(() => makeRoomAt(roomGrid), [roomGrid]);
 
+  // Which location is shown: "house" (the rich home sim) or a visit location
+  // (e.g. "cafe"). `visit` holds the player's position in the visit scene.
+  const [activeLocation, setActiveLocation] = useState("house");
+  const [visit, setVisit] = useState(null);
+  const travel = useCallback((locId) => {
+    if (locId === "house") {
+      setActiveLocation("house");
+      setVisit(null);
+    } else if (LOCATIONS[locId]) {
+      setActiveLocation(locId);
+      setVisit(makeVisit(locId));
+    }
+  }, []);
+
   // One tick of the world: advance the pure reducer with live RNG.
   const doTick = useCallback(() => {
     setSim((s) => advance(s, { walkable, roomAt, rng: Math.random }));
   }, [walkable, roomAt]);
 
-  // Run the clock on a fixed interval while playing; pause stops it.
-  const [playing, setPlaying] = useState(true);
+  // Continuous life: the world always ticks — no pause/play/step (the
+  // characters live whether or not the user interacts; MISSION.md).
   useEffect(() => {
-    if (!playing) return undefined;
     const id = setInterval(doTick, TICK_MS);
     return () => clearInterval(id);
-  }, [playing, doTick]);
+  }, [doTick]);
+
+  // Visit-location life: gently wander the location's agents while you're there.
+  useEffect(() => {
+    if (activeLocation === "house") return undefined;
+    const w = LOCATIONS[activeLocation].world.walkable;
+    const id = setInterval(() => {
+      setVisit((v) => (v ? { ...v, agents: v.agents.map((a) => wanderStep(a, w, Math.random)) } : v));
+    }, TICK_MS);
+    return () => clearInterval(id);
+  }, [activeLocation]);
 
   // Player movement: arrows/WASD step the user one walkable cell, ignored while
   // a text field is focused. Feeds sim.you, which the tick reads for `withYou`
@@ -847,11 +1241,16 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
       const dir = dirForKey(e.key);
       if (!dir) return;
       e.preventDefault();
-      setSim((s) => ({ ...s, you: tryMove(s.you, dir, walkable) }));
+      if (activeLocation === "house") {
+        setSim((s) => ({ ...s, you: tryMove(s.you, dir, walkable) }));
+      } else {
+        const w = LOCATIONS[activeLocation].world.walkable;
+        setVisit((v) => (v ? { ...v, player: tryMove(v.player, dir, w) } : v));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [walkable]);
+  }, [activeLocation, walkable]);
 
   // Chat with Лілі (v0.2). `history` is the transcript; sending grounds the reply
   // in the live context from simRef.current (her room/action at the moment you ask).
@@ -883,6 +1282,35 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
     [draft, pending, history, chat, roomAt],
   );
 
+  // Room cards ("who sees what") — sit above the chat in the right column.
+  // Agents in the active location: their drives + a current thought/observation
+  // (the player isn't an autonomous agent). House → Лілі; visit loc → its agents.
+  const liliRoom = roomAt(sim.lili.x, sim.lili.y);
+  const agentsHere =
+    activeLocation === "house"
+      ? [
+          {
+            id: "lili",
+            name: LILI_SPRITE.name,
+            color: LILI_SPRITE.body,
+            drives: sim.drives,
+            place: ROOMS[liliRoom].name,
+            thought: sim.voice && sim.voice !== "…" ? sim.voice : "Тут спокійно — можна побути собою.",
+          },
+        ]
+      : (visit?.agents ?? []).map((a) => ({ ...a, place: LOCATION_META[activeLocation].name }));
+
+  // Thought / observation cards for the agents currently in this location.
+  const thoughtCards = agentsHere.map((a) => (
+    <div key={a.id} data-card={a.id} style={cardStyle(a.color)}>
+      <b style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ width: 9, height: 9, borderRadius: "50%", background: a.color, display: "inline-block" }} />
+        {a.name} · {a.place}
+      </b>
+      <div style={{ ...cardDescStyle, fontStyle: "italic" }}>💭 {a.thought}</div>
+    </div>
+  ));
+
   return (
     <div
       style={{
@@ -892,205 +1320,184 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <div style={{ maxWidth: SW, margin: "0 auto" }}>
-        <Scene
-          sim={sim}
-          wallMap={wallMap}
-          roomAt={roomAt}
-          liliDur={GLIDE_LILI}
-          youDur={GLIDE_YOU}
-        />
-
-        {/* Controls (the full panel — drive bars, log, room cards — is HVN-011). */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginTop: 10,
-            color: "#3a3530",
-            fontSize: 14,
-          }}
-        >
-          <button onClick={() => setPlaying((p) => !p)}>
-            {playing ? "⏸ Пауза" : "▶ Грати"}
-          </button>
-          <button onClick={doTick} disabled={playing}>
-            ⏭ Крок
-          </button>
-          <span style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
-            День {sim.day} · {fmtTime(sim.t)}
-          </span>
-        </div>
-
-        {/* Drive bars */}
-        <div
-          data-panel="drives"
-          style={{
-            marginTop: 12,
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
-            gap: "3px 10px",
-            alignItems: "center",
-          }}
-        >
-          {DRIVE_KEYS.map((k) => (
-            <React.Fragment key={k}>
-              <span style={{ fontSize: 13, color: "#4a443c" }}>{k}</span>
-              <span
-                data-bar={k}
-                style={{
-                  fontFamily: "ui-monospace, monospace",
-                  color: DRIVE_COLORS[k],
-                  letterSpacing: 1,
-                }}
-              >
-                {barString(sim.drives[k])}
-              </span>
-              <span style={{ fontSize: 12, color: "#8a8276", fontVariantNumeric: "tabular-nums" }}>
-                {Math.round(sim.drives[k])}
-              </span>
-            </React.Fragment>
-          ))}
-        </div>
-
-        {/* Action line */}
-        <div data-action style={{ marginTop: 10, fontSize: 14, color: "#3a3530" }}>
-          ▸ {sim.action || "…"}
-        </div>
-
-        {/* Room cards — Лілі's room and yours, or a shared card when together */}
-        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {(() => {
-            const rv = roomView(roomAt(sim.lili.x, sim.lili.y), roomAt(sim.you.x, sim.you.y));
-            if (rv.together) {
-              const r = ROOMS[rv.room];
-              return (
-                <div data-card="together" style={cardStyle(r.color)}>
-                  <b>Ви разом тут · {r.name}</b>
-                  <div style={{ marginTop: 4, color: "#6b6258" }}>{r.desc}</div>
-                </div>
-              );
-            }
-            const rl = ROOMS[rv.lili];
-            const ry = ROOMS[rv.you];
-            return (
-              <>
-                <div data-card="lili" style={cardStyle(rl.color)}>
-                  <b>Лілі · {rl.name}</b>
-                  <div style={{ marginTop: 4, color: "#6b6258" }}>{rl.desc}</div>
-                </div>
-                <div data-card="you" style={cardStyle(ry.color)}>
-                  <b>Ти · {ry.name}</b>
-                  <div style={{ marginTop: 4, color: "#6b6258" }}>{ry.desc}</div>
-                </div>
-              </>
-            );
-          })()}
-        </div>
-
-        {/* Event log — last 5 lines, fading with age (newest first) */}
-        <div data-panel="log" style={{ marginTop: 10 }}>
-          {sim.log
-            .slice()
-            .reverse()
-            .map((e, i) => (
-              <div
-                key={`${e.day}-${e.t}-${i}`}
-                style={{ opacity: Math.max(0.35, 1 - i * 0.16), fontSize: 13, color: "#4a443c" }}
-              >
-                <span style={{ color: "#a59c8c", fontVariantNumeric: "tabular-nums" }}>
-                  {fmtTime(e.t)}
-                </span>{" "}
-                {e.line}
-              </div>
-            ))}
-        </div>
-
-        {/* Movement hint */}
-        <div style={{ marginTop: 10, fontSize: 12, color: "#8a8276" }}>
-          Рухайтесь: ← ↑ → ↓ або WASD · напишіть Лілі нижче
-        </div>
-
-        {/* Chat panel (v0.2) — talk to Лілі; she answers grounded in her state */}
-        <div
-          data-panel="chat"
-          style={{
-            marginTop: 14,
-            border: "1px solid #e3dcc9",
-            borderRadius: 10,
-            background: "#fffdf8",
-            overflow: "hidden",
-          }}
-        >
+      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+        {/* Scene + panels (left) and chat (right); town map spans full width below */}
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+          {/* ── Left column: the world + simulation panel ── */}
+          <div style={{ flex: "1 1 520px", minWidth: 0 }}>
+          {/* Which town-map location this scene is */}
           <div
-            data-chat="transcript"
-            style={{
-              maxHeight: 180,
-              overflowY: "auto",
-              padding: 10,
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              fontSize: 13,
-            }}
+            data-location
+            style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontSize: 15, color: "#3a3530" }}
           >
-            {chatOffline && (
-              <div data-chat="offline-note" style={{ color: "#b08a3a", fontSize: 12 }}>
-                Чат офлайн — додайте <code>VITE_ANTHROPIC_API_KEY</code> у <code>.env</code>, щоб Лілі відповідала.
-              </div>
-            )}
-            {history.length === 0 && (
-              <div style={{ color: "#a59c8c" }}>Поговоріть з Лілі — вона відповість залежно від того, де вона й що робить.</div>
-            )}
-            {history.map((m, i) => (
-              <div
-                key={i}
-                data-role={m.role}
-                style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "80%" }}
-              >
-                <span
-                  style={{
-                    display: "inline-block",
-                    padding: "5px 9px",
-                    borderRadius: 10,
-                    background: m.role === "user" ? "#dceaf6" : "#f0e6f4",
-                    color: "#3a3530",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {m.content}
-                </span>
-              </div>
-            ))}
-            {pending && (
-              <div data-chat="typing" style={{ alignSelf: "flex-start", color: "#a08fb0", fontStyle: "italic" }}>
-                Лілі друкує…
-              </div>
+            <span aria-hidden>{LOCATION_META[activeLocation].emoji}</span>
+            <b>{LOCATION_META[activeLocation].name}</b>
+            <span style={{ color: "#8a8276", fontSize: 12 }}>· локація на карті · ви тут</span>
+            {activeLocation !== "house" && (
+              <button onClick={() => travel("house")} style={{ marginLeft: "auto", fontSize: 12 }}>
+                ← Дім Лілі
+              </button>
             )}
           </div>
-          <form onSubmit={send} style={{ display: "flex", gap: 6, padding: 8, borderTop: "1px solid #efe8d8" }}>
-            <input
-              data-chat-input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              disabled={pending}
-              placeholder="Напишіть Лілі…"
-              aria-label="Повідомлення для Лілі"
-              style={{
-                flex: 1,
-                border: "1px solid #d9cdae",
-                borderRadius: 8,
-                padding: "6px 9px",
-                fontSize: 13,
-                background: pending ? "#f3efe6" : "#fff",
-              }}
+          {activeLocation === "house" || !visit ? (
+            <Scene
+              sim={sim}
+              wallMap={wallMap}
+              roomAt={roomAt}
+              liliDur={GLIDE_LILI}
+              youDur={GLIDE_YOU}
             />
-            <button type="submit" disabled={pending || !draft.trim()}>
-              Надіслати
-            </button>
-          </form>
+          ) : (
+            <LocationScene
+              world={LOCATIONS[activeLocation].world}
+              agents={visit.agents}
+              player={visit.player}
+              dayT={sim.t}
+            />
+          )}
+
+          {/* Clock — the world lives continuously; no pause/step/play controls */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 10,
+              color: "#6b6258",
+              fontSize: 14,
+            }}
+          >
+            <span style={{ color: "#3a9b5c" }} aria-hidden>
+              ●
+            </span>
+            <span>наживо</span>
+            <span style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
+              День {sim.day} · {fmtTime(sim.t)}
+            </span>
+          </div>
+
+          {/* Action line (Лілі, while you're home) */}
+          {activeLocation === "house" && (
+            <div data-action style={{ marginTop: 12, fontSize: 14, color: "#3a3530" }}>
+              ▸ {sim.action ? `Лілі ${sim.action}` : "…"}
+            </div>
+          )}
+
+          {/* Drives for every agent currently in this location */}
+          <div
+            data-panel="drives"
+            style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 10 }}
+          >
+            {agentsHere.map((a) => (
+              <AgentDrives key={a.id} name={a.name} color={a.color} drives={a.drives} />
+            ))}
+          </div>
+
+          {/* Movement hint */}
+          <div style={{ marginTop: 10, fontSize: 12, color: "#8a8276" }}>
+            Рухайтесь: ← ↑ → ↓ або WASD · напишіть Лілі праворуч
+          </div>
         </div>
+
+        {/* ── Right column: what each sees, above the chat ── */}
+        <div
+          style={{
+            flex: "1 1 300px",
+            minWidth: 260,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          {/* Thoughts / observations of the agents in this location */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{thoughtCards}</div>
+
+          {/* Chat panel (v0.2) — talk to Лілі; she answers grounded in her state */}
+          <div
+            data-panel="chat"
+            style={{
+              border: "1px solid #e3dcc9",
+              borderRadius: 10,
+              background: "#fffdf8",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              data-chat="transcript"
+              style={{
+                maxHeight: 640,
+                minHeight: 280,
+                overflowY: "auto",
+                padding: 10,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                fontSize: 13,
+              }}
+            >
+              {chatOffline && (
+                <div data-chat="offline-note" style={{ color: "#b08a3a", fontSize: 12 }}>
+                  Чат офлайн — додайте <code>VITE_ANTHROPIC_API_KEY</code> у <code>.env</code>, щоб Лілі відповідала.
+                </div>
+              )}
+              {history.length === 0 && (
+                <div style={{ color: "#a59c8c" }}>Поговоріть з Лілі — вона відповість залежно від того, де вона й що робить.</div>
+              )}
+              {history.map((m, i) => (
+                <div
+                  key={i}
+                  data-role={m.role}
+                  style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "85%" }}
+                >
+                  <span
+                    style={{
+                      display: "inline-block",
+                      padding: "5px 9px",
+                      borderRadius: 10,
+                      background: m.role === "user" ? "#dceaf6" : "#f0e6f4",
+                      color: "#3a3530",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {m.content}
+                  </span>
+                </div>
+              ))}
+              {pending && (
+                <div data-chat="typing" style={{ alignSelf: "flex-start", color: "#a08fb0", fontStyle: "italic" }}>
+                  Лілі друкує…
+                </div>
+              )}
+            </div>
+            <form onSubmit={send} style={{ display: "flex", gap: 6, padding: 8, borderTop: "1px solid #efe8d8" }}>
+              <input
+                data-chat-input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                disabled={pending}
+                placeholder="Напишіть Лілі…"
+                aria-label="Повідомлення для Лілі"
+                style={{
+                  flex: 1,
+                  border: "1px solid #d9cdae",
+                  borderRadius: 8,
+                  padding: "6px 9px",
+                  fontSize: 13,
+                  background: pending ? "#f3efe6" : "#fff",
+                }}
+              />
+              <button type="submit" disabled={pending || !draft.trim()}>
+                Надіслати
+              </button>
+            </form>
+          </div>
+        </div>
+        </div>
+
+        {/* Town map — full width, below both columns; click a location to travel */}
+        <TownMap active={activeLocation} onTravel={travel} />
       </div>
     </div>
   );
