@@ -756,7 +756,7 @@ export async function askLili({ text, context, history = [], client } = {}) {
   return block ? block.text : "";
 }
 
-export default function LiliHouseAITown() {
+export default function LiliHouseAITown({ chat = askLili } = {}) {
   const [sim, setSim] = useState(initialSim);
 
   // Async mirror of `sim` for use inside setInterval / async callbacks (HVN-007),
@@ -799,6 +799,35 @@ export default function LiliHouseAITown() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [walkable]);
+
+  // Chat with Лілі (v0.2). `history` is the transcript; sending grounds the reply
+  // in the live context from simRef.current (her room/action at the moment you ask).
+  const [history, setHistory] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [pending, setPending] = useState(false);
+
+  const send = useCallback(
+    async (e) => {
+      if (e) e.preventDefault();
+      const text = draft.trim();
+      if (!text || pending) return;
+      const prior = history; // history before this turn — askLili appends the user turn
+      setHistory((h) => [...h, { role: "user", content: text }]);
+      setDraft("");
+      setPending(true);
+      try {
+        const reply = await chat({
+          text,
+          context: liveContext(simRef.current, roomAt),
+          history: prior,
+        });
+        setHistory((h) => [...h, { role: "assistant", content: reply }]);
+      } finally {
+        setPending(false);
+      }
+    },
+    [draft, pending, history, chat, roomAt],
+  );
 
   return (
     <div
@@ -926,7 +955,82 @@ export default function LiliHouseAITown() {
 
         {/* Movement hint */}
         <div style={{ marginTop: 10, fontSize: 12, color: "#8a8276" }}>
-          Рухайтесь: ← ↑ → ↓ або WASD · розмова з Лілі — у v0.2
+          Рухайтесь: ← ↑ → ↓ або WASD · напишіть Лілі нижче
+        </div>
+
+        {/* Chat panel (v0.2) — talk to Лілі; she answers grounded in her state */}
+        <div
+          data-panel="chat"
+          style={{
+            marginTop: 14,
+            border: "1px solid #e3dcc9",
+            borderRadius: 10,
+            background: "#fffdf8",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            data-chat="transcript"
+            style={{
+              maxHeight: 180,
+              overflowY: "auto",
+              padding: 10,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              fontSize: 13,
+            }}
+          >
+            {history.length === 0 && (
+              <div style={{ color: "#a59c8c" }}>Поговоріть з Лілі — вона відповість залежно від того, де вона й що робить.</div>
+            )}
+            {history.map((m, i) => (
+              <div
+                key={i}
+                data-role={m.role}
+                style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "80%" }}
+              >
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "5px 9px",
+                    borderRadius: 10,
+                    background: m.role === "user" ? "#dceaf6" : "#f0e6f4",
+                    color: "#3a3530",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {m.content}
+                </span>
+              </div>
+            ))}
+            {pending && (
+              <div data-chat="typing" style={{ alignSelf: "flex-start", color: "#a08fb0", fontStyle: "italic" }}>
+                Лілі друкує…
+              </div>
+            )}
+          </div>
+          <form onSubmit={send} style={{ display: "flex", gap: 6, padding: 8, borderTop: "1px solid #efe8d8" }}>
+            <input
+              data-chat-input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              disabled={pending}
+              placeholder="Напишіть Лілі…"
+              aria-label="Повідомлення для Лілі"
+              style={{
+                flex: 1,
+                border: "1px solid #d9cdae",
+                borderRadius: 8,
+                padding: "6px 9px",
+                fontSize: 13,
+                background: pending ? "#f3efe6" : "#fff",
+              }}
+            />
+            <button type="submit" disabled={pending || !draft.trim()}>
+              Надіслати
+            </button>
+          </form>
         </div>
       </div>
     </div>
