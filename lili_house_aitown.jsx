@@ -17,6 +17,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 // Import the client-only entry — the package root re-exports a Node-only
 // agent-toolset (fs/path) that can't bundle for the browser.
 import { Anthropic } from "@anthropic-ai/sdk/client";
+import { AuthenticationError, PermissionDeniedError } from "@anthropic-ai/sdk/error";
 
 // ── Grid & scene constants (spec §2) ─────────────────────────────────────────
 export const W = 29; // columns
@@ -756,7 +757,59 @@ export async function askLili({ text, context, history = [], client } = {}) {
   return block ? block.text : "";
 }
 
-export default function LiliHouseAITown({ chat = askLili } = {}) {
+// ── Chat: graceful fallback & voice shaping (spec v0.2 §HVN-015) ─────────────
+// Shown when the key is missing (prototype runs offline) and on key/auth errors.
+export const OFFLINE_LINE = "Зараз я не на зв'язку… але я поруч із тобою.";
+// In-character lines for transient failures (rate limit, network, empty reply).
+export const FALLBACK_LINES = [
+  "Щось я задумалась… скажеш ще раз?",
+  "Вибач, відволіклася на мить. Повториш?",
+];
+
+function hasApiKey() {
+  return Boolean(import.meta.env?.VITE_ANTHROPIC_API_KEY);
+}
+
+// Keep a reply a single short in-character line: strip stray list bullets /
+// leading enumerators per line and collapse whitespace. Language is untouched.
+export function shapeReply(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// Choose a fallback by error kind: key/auth problems → offline line; anything
+// transient → a "distracted" line. Uses the SDK's typed errors (and .status).
+export function pickFallback(error, rng = Math.random) {
+  const keyProblem =
+    error instanceof AuthenticationError ||
+    error instanceof PermissionDeniedError ||
+    error?.status === 401 ||
+    error?.status === 403;
+  if (keyProblem) return OFFLINE_LINE;
+  return FALLBACK_LINES[Math.floor(rng() * FALLBACK_LINES.length)];
+}
+
+// Talk to Лілі without ever surfacing a raw error: short-circuit to the offline
+// line when there's no key (and no injected client), shape the reply, and turn
+// any failure into a short in-character fallback.
+export async function safeAskLili({ text, context, history = [], client, ask = askLili, rng = Math.random } = {}) {
+  if (!client && !hasApiKey()) return OFFLINE_LINE;
+  try {
+    const reply = shapeReply(await ask({ text, context, history, client }));
+    return reply || pickFallback(null, rng);
+  } catch (e) {
+    return pickFallback(e, rng);
+  }
+}
+
+export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
   const [sim, setSim] = useState(initialSim);
 
   // Async mirror of `sim` for use inside setInterval / async callbacks (HVN-007),
@@ -805,6 +858,7 @@ export default function LiliHouseAITown({ chat = askLili } = {}) {
   const [history, setHistory] = useState([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
+  const chatOffline = !hasApiKey(); // no key → Лілі answers with the offline line
 
   const send = useCallback(
     async (e) => {
@@ -981,6 +1035,11 @@ export default function LiliHouseAITown({ chat = askLili } = {}) {
               fontSize: 13,
             }}
           >
+            {chatOffline && (
+              <div data-chat="offline-note" style={{ color: "#b08a3a", fontSize: 12 }}>
+                Чат офлайн — додайте <code>VITE_ANTHROPIC_API_KEY</code> у <code>.env</code>, щоб Лілі відповідала.
+              </div>
+            )}
             {history.length === 0 && (
               <div style={{ color: "#a59c8c" }}>Поговоріть з Лілі — вона відповість залежно від того, де вона й що робить.</div>
             )}
