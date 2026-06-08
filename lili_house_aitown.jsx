@@ -14,6 +14,9 @@
  * the default export `LiliHouseAITown` is the mountable component.
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+// Import the client-only entry — the package root re-exports a Node-only
+// agent-toolset (fs/path) that can't bundle for the browser.
+import { Anthropic } from "@anthropic-ai/sdk/client";
 
 // ── Grid & scene constants (spec §2) ─────────────────────────────────────────
 export const W = 29; // columns
@@ -714,6 +717,43 @@ export function buildSystemPrompt({ liliRoom, liliAction, youRoom, together }) {
     `- Користувач зараз тут: ${yr}.`,
     together ? "- Ви разом в одній кімнаті." : "- Ви в різних кімнатах.",
   ].join("\n");
+}
+
+// ── Chat: frontend Claude client (spec v0.2 §HVN-013) ────────────────────────
+// Direct browser call to Anthropic — prototype-only (key in a Vite env var).
+// From v1.5 chat moves to POST /chat and the key is server-side only.
+export const CHAT_MODEL = "claude-opus-4-8"; // main model for direct chat (single switch point)
+export const CHAT_MAX_TOKENS = 300; // replies are short
+
+// Lazily construct the real client so importing the module never requires a key
+// (tests always inject a fake client and never hit this path).
+let _client = null;
+function defaultClient() {
+  if (!_client) {
+    _client = new Anthropic({
+      apiKey: import.meta.env?.VITE_ANTHROPIC_API_KEY,
+      dangerouslyAllowBrowser: true,
+    });
+  }
+  return _client;
+}
+
+// Ask Лілі: send the history + new user turn under the assembled system prompt
+// and return her short reply text. `client` is injectable for offline testing.
+export async function askLili({ text, context, history = [], client } = {}) {
+  const c = client ?? defaultClient();
+  const messages = [
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: text }, // no assistant prefill (removed on 4.x)
+  ];
+  const resp = await c.messages.create({
+    model: CHAT_MODEL,
+    max_tokens: CHAT_MAX_TOKENS,
+    system: buildSystemPrompt(context),
+    messages,
+  });
+  const block = (resp.content || []).find((b) => b.type === "text");
+  return block ? block.text : "";
 }
 
 export default function LiliHouseAITown() {
