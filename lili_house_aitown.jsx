@@ -676,6 +676,46 @@ const cardStyle = (accent) => ({
   boxShadow: "0 1px 2px #0001",
 });
 
+// ── Chat: canon & system-prompt assembly (spec v0.2 §HVN-012) ────────────────
+// Лілі's fixed persona. The hard voice rules live here so every reply is short,
+// Ukrainian, in character, and free of lists/emoji.
+export const LILI_CANON = `Ти — Лілі, художниця, яка живе в цьому домі. Ти тепла, спокійна й трохи мрійлива, любиш малювати, тишу й затишок. Ти говориш від першої особи, як жива людина у себе вдома.
+
+Правила відповіді:
+- Відповідай українською.
+- Коротко — одне-два речення.
+- У характері Лілі, від першої особи.
+- Без списків і без емодзі.`;
+
+// Derive the live chat context from sim state, reusing the world helpers
+// (roomAt + roomView's together-logic) — no duplicated room math.
+export function liveContext(sim, roomAt) {
+  const liliRoom = roomAt(sim.lili.x, sim.lili.y);
+  const youRoom = roomAt(sim.you.x, sim.you.y);
+  return {
+    liliRoom,
+    liliAction: sim.action,
+    youRoom,
+    together: roomView(liliRoom, youRoom).together,
+  };
+}
+
+// Assemble the per-message system prompt: canon + a compact Ukrainian
+// live-context block (her room/action, the user's room, together-or-not).
+export function buildSystemPrompt({ liliRoom, liliAction, youRoom, together }) {
+  const lr = ROOMS[liliRoom]?.name ?? "десь у домі";
+  const yr = ROOMS[youRoom]?.name ?? "десь у домі";
+  return [
+    LILI_CANON,
+    "",
+    "Поточний контекст:",
+    `- Ти зараз тут: ${lr}.`,
+    `- Що ти робиш: ${liliAction || "нічого особливого"}.`,
+    `- Користувач зараз тут: ${yr}.`,
+    together ? "- Ви разом в одній кімнаті." : "- Ви в різних кімнатах.",
+  ].join("\n");
+}
+
 export default function LiliHouseAITown() {
   const [sim, setSim] = useState(initialSim);
 
