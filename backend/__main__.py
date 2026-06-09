@@ -1,21 +1,12 @@
-"""``python -m backend`` entrypoint.
+"""``python -m backend`` entrypoint — runs the headless tick loop (v1.1).
 
-In v1.1 this prints a startup banner; the headless tick-loop runner is wired in
-HVN-021 (``backend/loop.py``).
+The world lives and ticks with no client; the telnet command server arrives in
+v1.2 (see specification/TERMINAL_SERVER_SPEC.md).
 """
 
 from __future__ import annotations
 
-from . import __version__, config
-
-
-def main() -> None:
-    print(
-        f"Haven backend v{__version__} — headless world. "
-        f"tick={config.TICK_MS}ms · key={'set' if config.has_api_key() else 'absent'}."
-    )
-    print("Tick loop arrives in HVN-021; nothing to run yet.")
-
+from . import loop
 
 if __name__ == "__main__":
-    main()
+    loop.main()
