@@ -6,7 +6,7 @@ import {
   deriveRoomGrid,
   makeRoomAt,
   initialSim,
-  GLIDE_LILI,
+  GLIDE_AGENT,
   GLIDE_YOU,
   TILE,
 } from "../lili_house_aitown.jsx";
@@ -19,7 +19,7 @@ const renderScene = (sim, extra = {}) =>
       sim={sim}
       wallMap={wallMap}
       roomAt={roomAt}
-      liliDur={GLIDE_LILI}
+      agentDur={GLIDE_AGENT}
       youDur={GLIDE_YOU}
       {...extra}
     />,
@@ -27,23 +27,23 @@ const renderScene = (sim, extra = {}) =>
 
 describe("HVN-009 — smooth sprite interpolation", () => {
   it("pins the glide durations (Лілі ≈ 0.7s, player ≈ 0.18s)", () => {
-    expect(GLIDE_LILI).toBeCloseTo(0.7, 5);
+    expect(GLIDE_AGENT).toBeCloseTo(0.7, 5);
     expect(GLIDE_YOU).toBeCloseTo(0.18, 5);
   });
 
   it("positions sprites via a transform translate to their cell", () => {
-    const sim = { ...initialSim(), lili: { x: 5, y: 3, acting: false, actTicks: 0 } };
+    const sim = { ...initialSim(), agent: { x: 5, y: 3, acting: false, actTicks: 0 } };
     const c = renderScene(sim);
-    const lili = c.querySelector('[data-sprite="Лілі"]');
-    expect(lili.getAttribute("transform")).toBe(`translate(${5 * TILE}, ${3 * TILE})`);
+    const agent = c.querySelector('[data-sprite="Лілі"]');
+    expect(agent.getAttribute("transform")).toBe(`translate(${5 * TILE}, ${3 * TILE})`);
   });
 
   it("applies a CSS transform transition to each sprite", () => {
     const c = renderScene(initialSim());
-    const lili = c.querySelector('[data-sprite="Лілі"]');
+    const agent = c.querySelector('[data-sprite="Лілі"]');
     const you = c.querySelector('[data-sprite="ти"]');
-    expect(lili.style.transition).toContain("transform");
-    expect(lili.style.transition).toContain("0.7s");
+    expect(agent.style.transition).toContain("transform");
+    expect(agent.style.transition).toContain("0.7s");
     expect(you.style.transition).toContain("transform");
     expect(you.style.transition).toContain("0.18s");
   });
@@ -58,8 +58,8 @@ describe("HVN-009 — smooth sprite interpolation", () => {
   });
 
   it("snaps (no transition) when a duration of 0 is passed", () => {
-    const c = renderScene(initialSim(), { liliDur: 0, youDur: 0 });
-    const lili = c.querySelector('[data-sprite="Лілі"]');
-    expect(lili.style.transition).toBe("none");
+    const c = renderScene(initialSim(), { agentDur: 0, youDur: 0 });
+    const agent = c.querySelector('[data-sprite="Лілі"]');
+    expect(agent.style.transition).toBe("none");
   });
 });

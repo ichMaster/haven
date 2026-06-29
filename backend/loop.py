@@ -38,10 +38,11 @@ def run_ticks(world: World, n: int) -> dict[str, Any]:
 
 
 def _log_line(state: dict[str, Any], prev_voice: str) -> str:
-    line = f"День {state['day']} · {fmt_time(state['t'])} · Лілі {state['action'] or '…'}"
+    name = state["agent"]["name"]
+    line = f"День {state['day']} · {fmt_time(state['t'])} · {name} {state['action'] or '…'}"
     voice = state["voice"]
     if voice and voice != "…" and voice != prev_voice:
-        line += f"   [Лілі]: {voice}"
+        line += f"   [{name}]: {voice}"
     return line
 
 

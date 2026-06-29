@@ -1,5 +1,5 @@
 /**
- * Haven v0.1 — graphical home + autonomous Лілі (single self-contained file).
+ * Haven v0.1 — graphical home + autonomous agent (single self-contained file).
  *
  * Spec: specification/PROTOTYPE_PHASE1_SPEC.md. This one file holds the whole
  * world in the browser — floor plan, single-agent drive simulation, BFS
@@ -11,7 +11,7 @@
  *
  * Pure logic (computeWallMap, derived grids, bfsNext, pickTarget, the tick
  * reducer, day/night + UI math) is exported by name so /tests can exercise it;
- * the default export `LiliHouseAITown` is the mountable component.
+ * the default export `AgentHouseAITown` is the mountable component.
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 // Import the client-only entry — the package root re-exports a Node-only
@@ -26,6 +26,12 @@ export const TILE = 24; // px per cell
 export const SW = W * TILE; // 696
 export const SH = H * TILE; // 360
 
+// ── Agent identity ───────────────────────────────────────────────────────────
+// The autonomous inhabitant's display name. Configurable via the Vite env var
+// VITE_AGENT_NAME (see .env); defaults to "Лілі". Used everywhere the name shows
+// on screen, in her studio's label, and in the chat system prompt.
+export const AGENT_NAME = import.meta.env?.VITE_AGENT_NAME || "Лілі";
+
 // ── Palette (spec §2) ────────────────────────────────────────────────────────
 export const PALETTE = {
   page: "#f3efe6", // warm cream page background
@@ -35,7 +41,7 @@ export const PALETTE = {
 // ── World: floor plan (spec §3) ──────────────────────────────────────────────
 // Letter → room-key map for the carved rectangles.
 export const LETTER = {
-  A: "art", // Майстерня Лілі (studio)
+  A: "art", // the agent's studio
   K: "kitchen", // Кухня
   H: "hall", // Хол (hub-spine)
   S: "sleep", // Наша спальня (bedroom)
@@ -138,11 +144,11 @@ export const ROOMS = {
     desc: "Твій кабінет: книги, тепле світло лампи й крісло, у якому добре думається.",
   },
   art: {
-    name: "Майстерня Лілі",
+    name: `Майстерня ${AGENT_NAME}`,
     floor: "#e6d6f2",
     color: "#7a52b0",
     verb: "малює",
-    desc: "Майстерня Лілі: запах фарби, полотна під вікном і світло, що тече на мольберт.",
+    desc: `Майстерня ${AGENT_NAME}: запах фарби, полотна під вікном і світло, що тече на мольберт.`,
   },
   sleep: {
     name: "Наша спальня",
@@ -168,7 +174,7 @@ export const ROOMS = {
 };
 
 // ── Objects & decor (spec §6) ────────────────────────────────────────────────
-// Interactive drive targets — the cell Лілі walks to and acts on.
+// Interactive drive targets — the cell the agent walks to and acts on.
 export const OBJECTS = [
   { x: 5, y: 3, glyph: "🎨", room: "art" },
   { x: 22, y: 2, glyph: "🛏️", room: "sleep" },
@@ -241,7 +247,7 @@ export const VOICE = {
 };
 
 // ── Drives & target selection (spec §7–8) ────────────────────────────────────
-// Лілі's four drives (Ukrainian keys), each 0..100, in display order.
+// the agent's four drives (Ukrainian keys), each 0..100, in display order.
 export const DRIVE_KEYS = ["натхнення", "спокій", "енергія", "тепло"];
 export const DRIVES_INIT = { натхнення: 78, спокій: 60, енергія: 52, тепло: 46 };
 
@@ -302,7 +308,7 @@ export function lowestDrive(drives) {
 }
 
 // Pick the OBJECTS target for the lowest drive's room. Special case: when the
-// lowest drive is warmth (тепло) and the user is in the office, Лілі comes to
+// lowest drive is warmth (тепло) and the user is in the office, the agent comes to
 // you — the target becomes the office object.
 export function pickTarget(drives, userRoom) {
   const low = lowestDrive(drives);
@@ -388,10 +394,10 @@ export function advance(state, { walkable, roomAt, rng = Math.random }) {
   // 2. decay every drive
   let drives = decayDrives(state.drives);
 
-  // 3. where is Лілі, and is the user with her?
-  const lili = { ...state.lili };
+  // 3. where is the agent, and is the user with her?
+  const agent = { ...state.agent };
   let target = state.target ? { ...state.target } : null;
-  const here = roomAt(lili.x, lili.y);
+  const here = roomAt(agent.x, agent.y);
   const youRoom = roomAt(state.you.x, state.you.y);
   const withYou = here === youRoom;
 
@@ -400,9 +406,9 @@ export function advance(state, { walkable, roomAt, rng = Math.random }) {
   let newLine = null; // ambient activity line → speech bubble AND event log
   let bubbleLine = null; // conversational aside to the user → bubble only (not logged)
 
-  if (lili.acting && target) {
+  if (agent.acting && target) {
     // 4. acting: refill the target drive, maybe acknowledge the user, then end
-    lili.actTicks += 1;
+    agent.actTicks += 1;
     const driveKey = ROOM_DRIVE[target.room];
     drives = refillDrive(drives, driveKey);
     const r = ROOMS[target.room];
@@ -411,23 +417,23 @@ export function advance(state, { walkable, roomAt, rng = Math.random }) {
       if (rng() < 0.5) action = `${r.verb}, з тобою поруч`;
       if (rng() < 0.6) bubbleLine = pickLine(VOICE.you, rng);
     }
-    if (actionDone(lili.actTicks, drives[driveKey])) {
-      lili.acting = false;
-      lili.actTicks = 0;
+    if (actionDone(agent.actTicks, drives[driveKey])) {
+      agent.acting = false;
+      agent.actTicks = 0;
       target = null;
     }
   } else if (target) {
     // 5. has a target: act on arrival, else step one cell toward it
-    if (lili.x === target.x && lili.y === target.y) {
-      lili.acting = true;
-      lili.actTicks = 0;
+    if (agent.x === target.x && agent.y === target.y) {
+      agent.acting = true;
+      agent.actTicks = 0;
       const r = ROOMS[target.room];
       action = `${r.verb} (${r.name})`;
       newLine = pickLine(VOICE[target.room], rng);
     } else {
-      const next = bfsNext(lili, target, walkable);
-      lili.x = next.x;
-      lili.y = next.y;
+      const next = bfsNext(agent, target, walkable);
+      agent.x = next.x;
+      agent.y = next.y;
       action = `йде до: ${ROOMS[target.room].name}`;
     }
   } else {
@@ -446,7 +452,7 @@ export function advance(state, { walkable, roomAt, rng = Math.random }) {
     voice = bubbleLine;
   }
 
-  return { ...state, t, day, drives, lili, target, action, voice, log };
+  return { ...state, t, day, drives, agent, target, action, voice, log };
 }
 
 // ── Simulation state container ───────────────────────────────────────────────
@@ -455,7 +461,7 @@ export function initialSim() {
     t: 8 * 60, // minutes into the day (08:00)
     day: 1,
     drives: { ...DRIVES_INIT },
-    lili: { x: 5, y: 3, acting: false, actTicks: 0 }, // starts in the studio
+    agent: { x: 5, y: 3, acting: false, actTicks: 0 }, // starts in the studio
     you: { x: 22, y: 8 }, // starts in the office ("Мій кабінет")
     target: null,
     action: "",
@@ -471,12 +477,12 @@ export const NIGHT_TINT = "#2a3a6a"; // day/night overlay color
 export const NIGHT_MAX = 0.24; // peak overlay opacity at night
 
 // Character sprite descriptors (spec §13).
-export const LILI_SPRITE = { body: "#b3508f", hair: "#3a2530", streak: "#ff7fc4", name: "Лілі" };
+export const AGENT_SPRITE = { body: "#b3508f", hair: "#3a2530", streak: "#ff7fc4", name: AGENT_NAME };
 export const YOU_SPRITE = { body: "#3a6ea5", hair: "#26303a", name: "ти" };
 
-// Glide durations (spec §14) — "frontend in motion". Лілі glides ≈ the tick so
+// Glide durations (spec §14) — "frontend in motion". the agent glides ≈ the tick so
 // her step looks continuous; the player is snappier for responsive control.
-export const GLIDE_LILI = 0.7; // seconds (≈ the 850 ms tick)
+export const GLIDE_AGENT = 0.7; // seconds (≈ the 850 ms tick)
 export const GLIDE_YOU = 0.18; // seconds
 
 // Overlay opacity from the world clock: 0 by day, gentle evening, peaking at
@@ -529,8 +535,8 @@ function Sprite({ x, y, body, hair, streak, name, dur = 0 }) {
 
 // The whole top-down SVG scene, rendered purely from `sim` + the static world.
 // Kept as its own component so tests can mount it with a controlled `sim`.
-// `liliDur` / `youDur` are the per-sprite glide durations (HVN-009).
-export function Scene({ sim, wallMap, roomAt, liliDur = 0, youDur = 0 }) {
+// `agentDur` / `youDur` are the per-sprite glide durations (HVN-009).
+export function Scene({ sim, wallMap, roomAt, agentDur = 0, youDur = 0 }) {
   const tiles = [];
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -583,7 +589,7 @@ export function Scene({ sim, wallMap, roomAt, liliDur = 0, youDur = 0 }) {
       width="100%"
       style={{ display: "block", background: PALETTE.surround, borderRadius: 8 }}
       role="img"
-      aria-label="Дім Лілі"
+      aria-label={`Дім ${AGENT_NAME}`}
     >
       <g data-layer="tiles">{tiles}</g>
       <g data-layer="props">{props}</g>
@@ -598,12 +604,12 @@ export function Scene({ sim, wallMap, roomAt, liliDur = 0, youDur = 0 }) {
         style={{ pointerEvents: "none" }}
         data-layer="daynight"
       />
-      <Sprite x={sim.lili.x} y={sim.lili.y} {...LILI_SPRITE} dur={liliDur} />
+      <Sprite x={sim.agent.x} y={sim.agent.y} {...AGENT_SPRITE} dur={agentDur} />
       <Sprite x={sim.you.x} y={sim.you.y} {...YOU_SPRITE} dur={youDur} />
       {showBubble && (
         <g
-          transform={`translate(${sim.lili.x * TILE}, ${sim.lili.y * TILE})`}
-          style={{ transition: liliDur ? `transform ${liliDur}s linear` : "none" }}
+          transform={`translate(${sim.agent.x * TILE}, ${sim.agent.y * TILE})`}
+          style={{ transition: agentDur ? `transform ${agentDur}s linear` : "none" }}
           data-layer="bubble"
         >
           <foreignObject x={-60 + TILE / 2} y={-TILE * 1.7} width={120} height={TILE * 1.5}>
@@ -671,10 +677,10 @@ export function barString(v, n = 10) {
 }
 
 // Decide the room cards: one shared "together" card when both share a room,
-// otherwise one card each for Лілі and the user.
-export function roomView(liliRoom, youRoom) {
-  if (liliRoom === youRoom) return { together: true, room: liliRoom };
-  return { together: false, lili: liliRoom, you: youRoom };
+// otherwise one card each for the agent and the user.
+export function roomView(agentRoom, youRoom) {
+  if (agentRoom === youRoom) return { together: true, room: agentRoom };
+  return { together: false, agent: agentRoom, you: youRoom };
 }
 
 const cardStyle = (accent) => ({
@@ -724,40 +730,40 @@ function AgentDrives({ name, color, drives }) {
 }
 
 // ── Chat: canon & system-prompt assembly (spec v0.2 §HVN-012) ────────────────
-// Лілі's fixed persona. The hard voice rules live here so every reply is short,
+// the agent's fixed persona. The hard voice rules live here so every reply is short,
 // Ukrainian, in character, and free of lists/emoji.
-export const LILI_CANON = `Ти — Лілі, художниця, яка живе в цьому домі. Ти тепла, спокійна й трохи мрійлива, любиш малювати, тишу й затишок. Ти говориш від першої особи, як жива людина у себе вдома.
+export const AGENT_CANON = `Ти — ${AGENT_NAME}, художниця, яка живе в цьому домі. Ти тепла, спокійна й трохи мрійлива, любиш малювати, тишу й затишок. Ти говориш від першої особи, як жива людина у себе вдома.
 
 Правила відповіді:
 - Відповідай українською.
 - Коротко — одне-два речення.
-- У характері Лілі, від першої особи.
+- У характері ${AGENT_NAME}, від першої особи.
 - Без списків і без емодзі.`;
 
 // Derive the live chat context from sim state, reusing the world helpers
 // (roomAt + roomView's together-logic) — no duplicated room math.
 export function liveContext(sim, roomAt) {
-  const liliRoom = roomAt(sim.lili.x, sim.lili.y);
+  const agentRoom = roomAt(sim.agent.x, sim.agent.y);
   const youRoom = roomAt(sim.you.x, sim.you.y);
   return {
-    liliRoom,
-    liliAction: sim.action,
+    agentRoom,
+    agentAction: sim.action,
     youRoom,
-    together: roomView(liliRoom, youRoom).together,
+    together: roomView(agentRoom, youRoom).together,
   };
 }
 
 // Assemble the per-message system prompt: canon + a compact Ukrainian
 // live-context block (her room/action, the user's room, together-or-not).
-export function buildSystemPrompt({ liliRoom, liliAction, youRoom, together }) {
-  const lr = ROOMS[liliRoom]?.name ?? "десь у домі";
+export function buildSystemPrompt({ agentRoom, agentAction, youRoom, together }) {
+  const lr = ROOMS[agentRoom]?.name ?? "десь у домі";
   const yr = ROOMS[youRoom]?.name ?? "десь у домі";
   return [
-    LILI_CANON,
+    AGENT_CANON,
     "",
     "Поточний контекст:",
     `- Ти зараз тут: ${lr}.`,
-    `- Що ти робиш: ${liliAction || "нічого особливого"}.`,
+    `- Що ти робиш: ${agentAction || "нічого особливого"}.`,
     `- Користувач зараз тут: ${yr}.`,
     together ? "- Ви разом в одній кімнаті." : "- Ви в різних кімнатах.",
   ].join("\n");
@@ -782,9 +788,9 @@ function defaultClient() {
   return _client;
 }
 
-// Ask Лілі: send the history + new user turn under the assembled system prompt
+// Ask the agent: send the history + new user turn under the assembled system prompt
 // and return her short reply text. `client` is injectable for offline testing.
-export async function askLili({ text, context, history = [], client } = {}) {
+export async function askAgent({ text, context, history = [], client } = {}) {
   const c = client ?? defaultClient();
   const messages = [
     ...history.map((m) => ({ role: m.role, content: m.content })),
@@ -839,10 +845,10 @@ export function pickFallback(error, rng = Math.random) {
   return FALLBACK_LINES[Math.floor(rng() * FALLBACK_LINES.length)];
 }
 
-// Talk to Лілі without ever surfacing a raw error: short-circuit to the offline
+// Talk to the agent without ever surfacing a raw error: short-circuit to the offline
 // line when there's no key (and no injected client), shape the reply, and turn
 // any failure into a short in-character fallback.
-export async function safeAskLili({ text, context, history = [], client, ask = askLili, rng = Math.random } = {}) {
+export async function safeAskAgent({ text, context, history = [], client, ask = askAgent, rng = Math.random } = {}) {
   if (!client && !hasApiKey()) return OFFLINE_LINE;
   try {
     const reply = shapeReply(await ask({ text, context, history, client }));
@@ -854,14 +860,14 @@ export async function safeAskLili({ text, context, history = [], client, ask = a
 
 // ── Town map (preview) ───────────────────────────────────────────────────────
 // An 8×4 grid where each cell is a location ("scene"), spanning the full width
-// below both columns. Only Лілі's house is available now; the rest are named
-// placeholders for the future town (ROADMAP v3.1 — with Лілі's mountain/water
+// below both columns. Only the agent's house is available now; the rest are named
+// placeholders for the future town (ROADMAP v3.1 — with the agent's mountain/water
 // motifs). The grey gaps read as streets.
 // available cells are visitable; `loc` ties a cell to a LOCATION you can travel to.
 const T = (emoji, label, kind, available = false, loc = null) => ({ emoji, label, kind, available, loc });
 export const TOWN = [
   // row 0
-  T("🏠", "Дім Лілі", "house", true, "house"), T("🏡", "Сусіди", "house"), T("🏘️", "Котедж", "house"), T("🌳", "Парк", "nature"), T("🌊", "Озеро", "water"), T("⛵", "Набережна", "water"), T("🏔️", "Гори", "mountain"), T("🌲", "Ліс", "nature"),
+  T("🏠", `Дім ${AGENT_NAME}`, "house", true, "house"), T("🏡", "Сусіди", "house"), T("🏘️", "Котедж", "house"), T("🌳", "Парк", "nature"), T("🌊", "Озеро", "water"), T("⛵", "Набережна", "water"), T("🏔️", "Гори", "mountain"), T("🌲", "Ліс", "nature"),
   // row 1
   T("🏢", "Квартири", "house"), T("🏫", "Школа", "civic"), T("📚", "Книгарня", "shop"), T("☕", "Кафе", "shop", true, "cafe"), T("🥐", "Пекарня", "shop"), T("🛒", "Супермаркет", "shop"), T("🌷", "Сад", "nature"), T("⛰️", "Пагорб", "mountain"),
   // row 2
@@ -882,18 +888,18 @@ const TOWN_BG = {
   mountain: "#e6ded3",
 };
 
-// Inhabitants of Лілі's house (icon color + name). Reuses the sprite colors.
+// Inhabitants of the agent's house (icon color + name). Reuses the sprite colors.
 export const CHARACTERS = [
-  { id: "lili", name: LILI_SPRITE.name, color: LILI_SPRITE.body },
+  { id: "agent", name: AGENT_SPRITE.name, color: AGENT_SPRITE.body },
   { id: "you", name: YOU_SPRITE.name, color: YOU_SPRITE.body },
 ];
 
-// Who is in which town cell (cell index = position in TOWN). Лілі and the player
+// Who is in which town cell (cell index = position in TOWN). the agent and the player
 // are home (cell 0); the rest are other inhabitants simulated around the town so
 // the map feels alive. Real autonomous agents arrive in v1.3 — for now this is a
 // fixed preview of a populated town.
 export const TOWN_RESIDENTS = {
-  0: CHARACTERS, // 🏠 Дім Лілі — Лілі + ти
+  0: CHARACTERS, // 🏠 home (cell 0) — the agent + you
   1: [{ id: "oksana", name: "Оксана", color: "#c98a3a" }], // 🏡 Сусіди
   3: [
     // 🌳 Парк
@@ -994,7 +1000,7 @@ export const LOCATIONS = {
 
 // Display metadata for the active-location header (house + the café).
 export const LOCATION_META = {
-  house: { emoji: "🏠", name: "Дім Лілі" },
+  house: { emoji: "🏠", name: `Дім ${AGENT_NAME}` },
   cafe: { emoji: "☕", name: "Кафе" },
 };
 
@@ -1070,7 +1076,7 @@ export function TownMap({ active = "house", onTravel } = {}) {
     <div data-town style={{ marginTop: 14 }}>
       <div style={{ fontSize: 14, color: "#3a3530" }}>Карта міста</div>
       <div style={{ fontSize: 12, color: "#8a8276", margin: "2px 0 8px" }}>
-        Натисніть доступну локацію, щоб перейти. Зараз відкриті: Дім Лілі та Кафе.
+        Натисніть доступну локацію, щоб перейти. Зараз відкриті: Дім {AGENT_NAME} та Кафе.
       </div>
       <div
         style={{
@@ -1180,7 +1186,7 @@ export function TownMap({ active = "house", onTravel } = {}) {
   );
 }
 
-export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
+export default function AgentHouseAITown({ chat = safeAskAgent } = {}) {
   const [sim, setSim] = useState(initialSim);
 
   // Async mirror of `sim` for use inside setInterval / async callbacks (HVN-007),
@@ -1252,19 +1258,19 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
     return () => window.removeEventListener("keydown", onKey);
   }, [activeLocation, walkable]);
 
-  // Chat with Лілі (v0.2). `history` is the transcript; sending grounds the reply
+  // Chat with the agent (v0.2). `history` is the transcript; sending grounds the reply
   // in the live context from simRef.current (her room/action at the moment you ask).
   const [history, setHistory] = useState([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
-  const chatOffline = !hasApiKey(); // no key → Лілі answers with the offline line
+  const chatOffline = !hasApiKey(); // no key → the agent answers with the offline line
 
   const send = useCallback(
     async (e) => {
       if (e) e.preventDefault();
       const text = draft.trim();
       if (!text || pending) return;
-      const prior = history; // history before this turn — askLili appends the user turn
+      const prior = history; // history before this turn — askAgent appends the user turn
       setHistory((h) => [...h, { role: "user", content: text }]);
       setDraft("");
       setPending(true);
@@ -1284,17 +1290,17 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
 
   // Room cards ("who sees what") — sit above the chat in the right column.
   // Agents in the active location: their drives + a current thought/observation
-  // (the player isn't an autonomous agent). House → Лілі; visit loc → its agents.
-  const liliRoom = roomAt(sim.lili.x, sim.lili.y);
+  // (the player isn't an autonomous agent). House → the agent; visit loc → its agents.
+  const agentRoom = roomAt(sim.agent.x, sim.agent.y);
   const agentsHere =
     activeLocation === "house"
       ? [
           {
-            id: "lili",
-            name: LILI_SPRITE.name,
-            color: LILI_SPRITE.body,
+            id: "agent",
+            name: AGENT_SPRITE.name,
+            color: AGENT_SPRITE.body,
             drives: sim.drives,
-            place: ROOMS[liliRoom].name,
+            place: ROOMS[agentRoom].name,
             thought: sim.voice && sim.voice !== "…" ? sim.voice : "Тут спокійно — можна побути собою.",
           },
         ]
@@ -1335,7 +1341,7 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
             <span style={{ color: "#8a8276", fontSize: 12 }}>· локація на карті · ви тут</span>
             {activeLocation !== "house" && (
               <button onClick={() => travel("house")} style={{ marginLeft: "auto", fontSize: 12 }}>
-                ← Дім Лілі
+                ← Дім {AGENT_NAME}
               </button>
             )}
           </div>
@@ -1344,7 +1350,7 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
               sim={sim}
               wallMap={wallMap}
               roomAt={roomAt}
-              liliDur={GLIDE_LILI}
+              agentDur={GLIDE_AGENT}
               youDur={GLIDE_YOU}
             />
           ) : (
@@ -1376,10 +1382,10 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
             </span>
           </div>
 
-          {/* Action line (Лілі, while you're home) */}
+          {/* Action line (the agent, while you're home) */}
           {activeLocation === "house" && (
             <div data-action style={{ marginTop: 12, fontSize: 14, color: "#3a3530" }}>
-              ▸ {sim.action ? `Лілі ${sim.action}` : "…"}
+              ▸ {sim.action ? `${AGENT_NAME} ${sim.action}` : "…"}
             </div>
           )}
 
@@ -1395,7 +1401,7 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
 
           {/* Movement hint */}
           <div style={{ marginTop: 10, fontSize: 12, color: "#8a8276" }}>
-            Рухайтесь: ← ↑ → ↓ або WASD · напишіть Лілі праворуч
+            Рухайтесь: ← ↑ → ↓ або WASD · напишіть {AGENT_NAME} праворуч
           </div>
         </div>
 
@@ -1412,7 +1418,7 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
           {/* Thoughts / observations of the agents in this location */}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{thoughtCards}</div>
 
-          {/* Chat panel (v0.2) — talk to Лілі; she answers grounded in her state */}
+          {/* Chat panel (v0.2) — talk to the agent; she answers grounded in her state */}
           <div
             data-panel="chat"
             style={{
@@ -1439,11 +1445,11 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
             >
               {chatOffline && (
                 <div data-chat="offline-note" style={{ color: "#b08a3a", fontSize: 12 }}>
-                  Чат офлайн — додайте <code>VITE_ANTHROPIC_API_KEY</code> у <code>.env</code>, щоб Лілі відповідала.
+                  Чат офлайн — додайте <code>VITE_ANTHROPIC_API_KEY</code> у <code>.env</code>, щоб {AGENT_NAME} відповідала.
                 </div>
               )}
               {history.length === 0 && (
-                <div style={{ color: "#a59c8c" }}>Поговоріть з Лілі — вона відповість залежно від того, де вона й що робить.</div>
+                <div style={{ color: "#a59c8c" }}>Поговоріть з {AGENT_NAME} — вона відповість залежно від того, де вона й що робить.</div>
               )}
               {history.map((m, i) => (
                 <div
@@ -1467,7 +1473,7 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
               ))}
               {pending && (
                 <div data-chat="typing" style={{ alignSelf: "flex-start", color: "#a08fb0", fontStyle: "italic" }}>
-                  Лілі друкує…
+                  {AGENT_NAME} друкує…
                 </div>
               )}
             </div>
@@ -1477,8 +1483,8 @@ export default function LiliHouseAITown({ chat = safeAskLili } = {}) {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={pending}
-                placeholder="Напишіть Лілі…"
-                aria-label="Повідомлення для Лілі"
+                placeholder={`Напишіть ${AGENT_NAME}…`}
+                aria-label={`Повідомлення для ${AGENT_NAME}`}
                 style={{
                   flex: 1,
                   border: "1px solid #d9cdae",

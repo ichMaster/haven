@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
-import LiliHouseAITown, { TILE } from "../lili_house_aitown.jsx";
+import AgentHouseAITown, { TILE } from "../lili_house_aitown.jsx";
 
 afterEach(cleanup);
 
@@ -9,7 +9,7 @@ const chatForm = (c) => c.querySelector('[data-panel="chat"] form');
 
 describe("HVN-014 — chat panel UI (mounted)", () => {
   it("renders the chat panel with a transcript, input, and send button", () => {
-    const { container } = render(<LiliHouseAITown chat={async () => "x"} />);
+    const { container } = render(<AgentHouseAITown chat={async () => "x"} />);
     expect(container.querySelector('[data-panel="chat"]')).toBeTruthy();
     expect(chatInput(container)).toBeTruthy();
     expect(container.querySelector('[data-panel="chat"] button[type="submit"]')).toBeTruthy();
@@ -21,7 +21,7 @@ describe("HVN-014 — chat panel UI (mounted)", () => {
       captured = args;
       return "Малюю гори.";
     };
-    const { container, findByText } = render(<LiliHouseAITown chat={chat} />);
+    const { container, findByText } = render(<AgentHouseAITown chat={chat} />);
 
     const input = chatInput(container);
     fireEvent.change(input, { target: { value: "Що ти робиш?" } });
@@ -33,13 +33,13 @@ describe("HVN-014 — chat panel UI (mounted)", () => {
 
     // grounded in the live context from simRef (start: Лілі studio, you office)
     expect(captured.text).toBe("Що ти робиш?");
-    expect(captured.context.liliRoom).toBe("art");
+    expect(captured.context.agentRoom).toBe("art");
     expect(captured.context.youRoom).toBe("office");
     expect(captured.history).toEqual([]); // first turn → empty prior history
   });
 
   it("ignores movement keys while the chat input is focused", () => {
-    const { container } = render(<LiliHouseAITown chat={async () => "ok"} />);
+    const { container } = render(<AgentHouseAITown chat={async () => "ok"} />);
     const player = () => container.querySelector('[data-sprite="ти"]').getAttribute("transform");
     const before = player();
     const input = chatInput(container);

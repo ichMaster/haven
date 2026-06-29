@@ -46,13 +46,13 @@ def test_pick_target_when_idle():
 def test_step_toward_target():
     start = {
         **initial_sim(),
-        "lili": {"x": 5, "y": 3, "acting": False, "act_ticks": 0},
+        "agent": {"x": 5, "y": 3, "acting": False, "act_ticks": 0},
         "target": _obj["bath"],
     }
     s = _step(start)
-    moved = abs(s["lili"]["x"] - 5) + abs(s["lili"]["y"] - 3)
+    moved = abs(s["agent"]["x"] - 5) + abs(s["agent"]["y"] - 3)
     assert moved == 1
-    assert WALKABLE[s["lili"]["y"]][s["lili"]["x"]] is True
+    assert WALKABLE[s["agent"]["y"]][s["agent"]["x"]] is True
     assert "йде до" in s["action"]
 
 
@@ -60,12 +60,12 @@ def test_arrival_begins_acting_with_room_line():
     o = _obj["kitchen"]
     on_target = {
         **initial_sim(),
-        "lili": {"x": o["x"], "y": o["y"], "acting": False, "act_ticks": 0},
+        "agent": {"x": o["x"], "y": o["y"], "acting": False, "act_ticks": 0},
         "target": o,
     }
     s = _step(on_target)
-    assert s["lili"]["acting"] is True
-    assert s["lili"]["act_ticks"] == 0
+    assert s["agent"]["acting"] is True
+    assert s["agent"]["act_ticks"] == 0
     assert s["voice"] in VOICE["kitchen"]
     assert s["log"][-1]["line"] == s["voice"]
 
@@ -74,19 +74,19 @@ def test_acting_refills_and_ends_at_threshold():
     o = _obj["sleep"]  # refills energy
     s = {
         **initial_sim(),
-        "lili": {"x": o["x"], "y": o["y"], "acting": True, "act_ticks": 0},
+        "agent": {"x": o["x"], "y": o["y"], "acting": True, "act_ticks": 0},
         "target": o,
         "drives": {"inspiration": 80, "calm": 80, "energy": 50, "warmth": 80},
     }
     before = s["drives"]["energy"]
     s = _step(s)
     assert s["drives"]["energy"] == before + 14  # +17 refill, -3 decay
-    assert s["lili"]["act_ticks"] == 1
+    assert s["agent"]["act_ticks"] == 1
     guard = 0
-    while s["lili"]["acting"] and guard < 10:
+    while s["agent"]["acting"] and guard < 10:
         s = _step(s)
         guard += 1
-    assert s["lili"]["acting"] is False
+    assert s["agent"]["acting"] is False
     assert s["target"] is None
 
 

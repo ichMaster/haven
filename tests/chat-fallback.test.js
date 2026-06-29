@@ -2,14 +2,14 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   shapeReply,
   pickFallback,
-  safeAskLili,
+  safeAskAgent,
   OFFLINE_LINE,
   FALLBACK_LINES,
 } from "../lili_house_aitown.jsx";
 
 afterEach(() => vi.unstubAllEnvs());
 
-const ctx = { liliRoom: "art", liliAction: "малює", youRoom: "office", together: false };
+const ctx = { agentRoom: "art", agentAction: "малює", youRoom: "office", together: false };
 const zero = () => 0; // deterministic rng → FALLBACK_LINES[0]
 
 const okClient = (reply) => ({ messages: { create: async () => ({ content: [{ type: "text", text: reply }] }) } });
@@ -50,24 +50,24 @@ describe("HVN-015 — pickFallback", () => {
   });
 });
 
-describe("HVN-015 — safeAskLili", () => {
+describe("HVN-015 — safeAskAgent", () => {
   it("shapes a successful reply", async () => {
-    const reply = await safeAskLili({ text: "Що робиш?", context: ctx, client: okClient("  Малюю   гори.  ") });
+    const reply = await safeAskAgent({ text: "Що робиш?", context: ctx, client: okClient("  Малюю   гори.  ") });
     expect(reply).toBe("Малюю гори.");
   });
 
   it("flattens a list-y reply into one in-character line", async () => {
-    const reply = await safeAskLili({ text: "x", context: ctx, client: okClient("- гора\n- море") });
+    const reply = await safeAskAgent({ text: "x", context: ctx, client: okClient("- гора\n- море") });
     expect(reply).toBe("гора море");
   });
 
   it("falls back in character on a transient API error (no raw error)", async () => {
-    const reply = await safeAskLili({ text: "x", context: ctx, client: failClient(429), rng: zero });
+    const reply = await safeAskAgent({ text: "x", context: ctx, client: failClient(429), rng: zero });
     expect(reply).toBe(FALLBACK_LINES[0]);
   });
 
   it("returns the offline line on an auth error", async () => {
-    const reply = await safeAskLili({ text: "x", context: ctx, client: failClient(401), rng: zero });
+    const reply = await safeAskAgent({ text: "x", context: ctx, client: failClient(401), rng: zero });
     expect(reply).toBe(OFFLINE_LINE);
   });
 
@@ -75,12 +75,12 @@ describe("HVN-015 — safeAskLili", () => {
     // Force "no key" regardless of any local .env, so the test never reaches the
     // real client / network.
     vi.stubEnv("VITE_ANTHROPIC_API_KEY", "");
-    const reply = await safeAskLili({ text: "x", context: ctx });
+    const reply = await safeAskAgent({ text: "x", context: ctx });
     expect(reply).toBe(OFFLINE_LINE);
   });
 
   it("falls back when the model returns an empty reply", async () => {
-    const reply = await safeAskLili({ text: "x", context: ctx, client: okClient(""), rng: zero });
+    const reply = await safeAskAgent({ text: "x", context: ctx, client: okClient(""), rng: zero });
     expect(reply).toBe(FALLBACK_LINES[0]);
   });
 });

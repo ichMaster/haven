@@ -56,11 +56,11 @@ describe("HVN-007 — simulation tick", () => {
 
   it("steps one cell toward the target while en route (step 5)", () => {
     const start = { ...initialSim(), target: obj("bath"), action: "" };
-    start.lili = { x: 5, y: 3, acting: false, actTicks: 0 };
+    start.agent = { x: 5, y: 3, acting: false, actTicks: 0 };
     const s = step(start);
-    const moved = Math.abs(s.lili.x - 5) + Math.abs(s.lili.y - 3);
+    const moved = Math.abs(s.agent.x - 5) + Math.abs(s.agent.y - 3);
     expect(moved).toBe(1);
-    expect(walkable[s.lili.y][s.lili.x]).toBe(true);
+    expect(walkable[s.agent.y][s.agent.x]).toBe(true);
     expect(s.action).toContain("йде до");
   });
 
@@ -68,12 +68,12 @@ describe("HVN-007 — simulation tick", () => {
     const o = obj("kitchen");
     const onTarget = {
       ...initialSim(),
-      lili: { x: o.x, y: o.y, acting: false, actTicks: 0 },
+      agent: { x: o.x, y: o.y, acting: false, actTicks: 0 },
       target: o,
     };
     const s = step(onTarget);
-    expect(s.lili.acting).toBe(true);
-    expect(s.lili.actTicks).toBe(0);
+    expect(s.agent.acting).toBe(true);
+    expect(s.agent.actTicks).toBe(0);
     expect(VOICE.kitchen).toContain(s.voice);
     expect(s.log.at(-1).line).toBe(s.voice);
   });
@@ -82,7 +82,7 @@ describe("HVN-007 — simulation tick", () => {
     const o = obj("sleep"); // refills енергія
     let s = {
       ...initialSim(),
-      lili: { x: o.x, y: o.y, acting: true, actTicks: 0 },
+      agent: { x: o.x, y: o.y, acting: true, actTicks: 0 },
       target: o,
       drives: { натхнення: 80, спокій: 80, енергія: 50, тепло: 80 },
     };
@@ -90,11 +90,11 @@ describe("HVN-007 — simulation tick", () => {
     s = step(s);
     // +17 refill then -3 decay this tick = net +14
     expect(s.drives.енергія).toBe(before + 14);
-    expect(s.lili.actTicks).toBe(1);
+    expect(s.agent.actTicks).toBe(1);
     // run until the action ends (actTicks≥4 or drive≥94)
     let guard = 0;
-    while (s.lili.acting && guard++ < 10) s = step(s);
-    expect(s.lili.acting).toBe(false);
+    while (s.agent.acting && guard++ < 10) s = step(s);
+    expect(s.agent.acting).toBe(false);
     expect(s.target).toBe(null);
   });
 
@@ -102,7 +102,7 @@ describe("HVN-007 — simulation tick", () => {
     const o = obj("office"); // user's room
     const s = step({
       ...initialSim(),
-      lili: { x: o.x, y: o.y, acting: true, actTicks: 0 },
+      agent: { x: o.x, y: o.y, acting: true, actTicks: 0 },
       you: { x: o.x, y: o.y + 1 }, // same room
       target: o,
       drives: { натхнення: 80, спокій: 80, енергія: 80, тепло: 50 },

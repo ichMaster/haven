@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@testing-library/react";
-import LiliHouseAITown, { TownMap, TOWN, TOWN_RESIDENTS } from "../lili_house_aitown.jsx";
+import AgentHouseAITown, { TownMap, TOWN, TOWN_RESIDENTS } from "../lili_house_aitown.jsx";
 
 afterEach(cleanup);
 
@@ -35,7 +35,7 @@ describe("HVN — town map (preview)", () => {
     expect(TOWN_RESIDENTS[0].map((r) => r.name)).toEqual(["Лілі", "ти"]);
     const { container } = render(<TownMap />);
     const houseCell = container.querySelector('[data-available="true"]');
-    expect(houseCell.querySelector('[data-resident="lili"]').textContent).toContain("Лілі");
+    expect(houseCell.querySelector('[data-resident="agent"]').textContent).toContain("Лілі");
     expect(houseCell.querySelector('[data-resident="you"]').textContent).toContain("ти");
 
     // other agents live in several other (locked) locations
@@ -56,19 +56,19 @@ describe("HVN — town map (preview)", () => {
   });
 
   it("is wired into the app below the scene", () => {
-    const { container } = render(<LiliHouseAITown chat={async () => "x"} />);
+    const { container } = render(<AgentHouseAITown chat={async () => "x"} />);
     expect(container.querySelector("[data-town]")).toBeTruthy();
   });
 
   it("labels the scene with its town-map location (Дім Лілі)", () => {
-    const { container } = render(<LiliHouseAITown chat={async () => "x"} />);
+    const { container } = render(<AgentHouseAITown chat={async () => "x"} />);
     expect(container.querySelector("[data-location]").textContent).toContain("Дім Лілі");
   });
 });
 
 describe("HVN — location navigation (house ↔ café)", () => {
   it("travels to the café from the map and back home", () => {
-    const { container } = render(<LiliHouseAITown chat={async () => "x"} />);
+    const { container } = render(<AgentHouseAITown chat={async () => "x"} />);
 
     // starts at home: Лілі + you in the house scene
     expect(container.querySelector("[data-location]").textContent).toContain("Дім Лілі");
@@ -89,7 +89,7 @@ describe("HVN — location navigation (house ↔ café)", () => {
   });
 
   it("shows the café's agents (Марко, Зоя) and their drives when you visit", () => {
-    const { container } = render(<LiliHouseAITown chat={async () => "x"} />);
+    const { container } = render(<AgentHouseAITown chat={async () => "x"} />);
     fireEvent.click(container.querySelector('[data-loc="cafe"]'));
     expect(container.querySelector('[data-sprite="Марко"]')).toBeTruthy();
     expect(container.querySelector('[data-sprite="Зоя"]')).toBeTruthy();
@@ -105,7 +105,7 @@ describe("HVN — location navigation (house ↔ café)", () => {
     // thought cards show the café agents' observations (not Лілі)
     expect(container.querySelector('[data-card="marko"]').textContent).toContain("Заварюю");
     expect(container.querySelector('[data-card="zoya"]')).toBeTruthy();
-    expect(container.querySelector('[data-card="lili"]')).toBeNull();
+    expect(container.querySelector('[data-card="agent"]')).toBeNull();
 
     // back home — café agents are no longer rendered
     fireEvent.click(container.querySelector("[data-location] button"));
@@ -114,7 +114,7 @@ describe("HVN — location navigation (house ↔ café)", () => {
   });
 
   it("lets you walk in the café with WASD without moving the home player", () => {
-    const { container } = render(<LiliHouseAITown chat={async () => "x"} />);
+    const { container } = render(<AgentHouseAITown chat={async () => "x"} />);
     fireEvent.click(container.querySelector('[data-loc="cafe"]'));
     const before = container.querySelector('[data-sprite="ти"]').getAttribute("transform");
     fireEvent.keyDown(window, { key: "ArrowRight" });

@@ -54,16 +54,16 @@ describe("HVN-008 — Scene render", () => {
 
   it("renders both sprites with their body colors and name tags", () => {
     const c = renderScene(initialSim());
-    const lili = c.querySelector('[data-sprite="Лілі"]');
+    const agent = c.querySelector('[data-sprite="Лілі"]');
     const you = c.querySelector('[data-sprite="ти"]');
-    expect(lili).toBeTruthy();
+    expect(agent).toBeTruthy();
     expect(you).toBeTruthy();
-    expect(lili.querySelector('rect[fill="#b3508f"]')).toBeTruthy(); // Лілі body
+    expect(agent.querySelector('rect[fill="#b3508f"]')).toBeTruthy(); // Лілі body
     expect(you.querySelector('rect[fill="#3a6ea5"]')).toBeTruthy(); // player body
-    expect(lili.querySelector("text").textContent).toBe("Лілі");
+    expect(agent.querySelector("text").textContent).toBe("Лілі");
     expect(you.querySelector("text").textContent).toBe("ти");
     // Лілі has the pink streak; the player does not
-    expect(lili.querySelector('rect[fill="#ff7fc4"]')).toBeTruthy();
+    expect(agent.querySelector('rect[fill="#ff7fc4"]')).toBeTruthy();
     expect(you.querySelector('rect[fill="#ff7fc4"]')).toBeNull();
   });
 

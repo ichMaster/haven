@@ -37,6 +37,9 @@ _load_dotenv(_REPO_ROOT / ".env")
 # World tick interval in milliseconds (shared by all protocols).
 TICK_MS: int = int(os.environ.get("HAVEN_TICK_MS", "1000"))
 
+# The autonomous agent's display name (configurable; the default is "Шунья").
+AGENT_NAME: str = os.environ.get("HAVEN_AGENT_NAME") or "Шунья"
+
 # Anthropic API key — server-side only; unused in v1.1 (wired in v1.4). Never log it.
 ANTHROPIC_API_KEY: str | None = os.environ.get("ANTHROPIC_API_KEY") or None
 

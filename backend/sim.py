@@ -5,9 +5,9 @@ pure reducer: given the current state and world deps, it returns the next state.
 Deterministic for a fixed ``rng`` (a ``random.Random``-like object with
 ``.random()``) so the tick is fully testable.
 
-v1.1 is single-agent (Лілі) and headless — there is **no player**, so
-``user_room`` is ``None``: ``with_you`` is always False and the warmth→office /
-``you``-pool branches are inert (they activate in v1.3).
+v1.1 is single-agent and headless — there is **no player**, so ``user_room`` is
+``None``: ``with_you`` is always False and the warmth→office / ``you``-pool
+branches are inert (they activate in v1.3).
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from __future__ import annotations
 import random
 from typing import Any
 
+from .config import AGENT_NAME
 from .drives import DRIVES_INIT, ROOM_DRIVE, action_done, decay_drives, pick_target, refill_drive
 from .nav import bfs_next
 from .world import ROOMS
@@ -54,13 +55,13 @@ def fmt_time(t: int) -> str:
 
 
 def initial_sim() -> dict[str, Any]:
-    """Seed the single-agent world: Лілі in her studio, the clock at 08:00."""
+    """Seed the single-agent world: the agent in the studio, the clock at 08:00."""
     return {
         "t": 8 * 60,
         "day": 1,
         "drives": dict(DRIVES_INIT),
-        "lili": {"x": 5, "y": 3, "acting": False, "act_ticks": 0},
-        "target": None,  # the OBJECTS entry Лілі is heading to / acting on
+        "agent": {"name": AGENT_NAME, "x": 5, "y": 3, "acting": False, "act_ticks": 0},
+        "target": None,  # the OBJECTS entry the agent is heading to / acting on
         "action": "",
         "voice": "",  # current spoken line ("" or "…" hidden)
         "log": [],  # last LOG_LEN events: {t, day, line}
@@ -92,19 +93,19 @@ def advance(
     # 2. decay every drive
     drives = decay_drives(state["drives"])
 
-    # 3. where is Лілі, and is the user with her?
-    lili = dict(state["lili"])
+    # 3. where is the agent, and is the user with it?
+    agent = dict(state["agent"])
     target = dict(state["target"]) if state["target"] else None
-    here = room_at(lili["x"], lili["y"])
+    here = room_at(agent["x"], agent["y"])
     with_you = here == user_room  # None → always False in v1.1
     action = state["action"]
     voice = state["voice"]
     new_line = None  # ambient activity line → spoken AND logged
     bubble_line = None  # conversational aside to the user → spoken only (not logged)
 
-    if lili["acting"] and target:
+    if agent["acting"] and target:
         # 4. acting: refill the target drive, maybe acknowledge the user, then end
-        lili["act_ticks"] += 1
+        agent["act_ticks"] += 1
         drive_key = ROOM_DRIVE[target["room"]]
         drives = refill_drive(drives, drive_key)
         r = ROOMS[target["room"]]
@@ -114,21 +115,21 @@ def advance(
                 action = f"{r['verb']}, з тобою поруч"
             if rng.random() < 0.6:
                 bubble_line = _pick(VOICE["you"], rng)
-        if action_done(lili["act_ticks"], drives[drive_key]):
-            lili["acting"] = False
-            lili["act_ticks"] = 0
+        if action_done(agent["act_ticks"], drives[drive_key]):
+            agent["acting"] = False
+            agent["act_ticks"] = 0
             target = None
     elif target:
         # 5. has a target: act on arrival, else step one cell toward it
-        if (lili["x"], lili["y"]) == (target["x"], target["y"]):
-            lili["acting"] = True
-            lili["act_ticks"] = 0
+        if (agent["x"], agent["y"]) == (target["x"], target["y"]):
+            agent["acting"] = True
+            agent["act_ticks"] = 0
             r = ROOMS[target["room"]]
             action = f"{r['verb']} ({r['name']})"
             new_line = _pick(VOICE[target["room"]], rng)
         else:
-            nx, ny = bfs_next((lili["x"], lili["y"]), (target["x"], target["y"]), walkable)
-            lili["x"], lili["y"] = nx, ny
+            nx, ny = bfs_next((agent["x"], agent["y"]), (target["x"], target["y"]), walkable)
+            agent["x"], agent["y"] = nx, ny
             action = f"йде до: {ROOMS[target['room']]['name']}"
     else:
         # 6. no target: choose the room of the lowest drive
@@ -150,7 +151,7 @@ def advance(
         "t": t,
         "day": day,
         "drives": drives,
-        "lili": lili,
+        "agent": agent,
         "target": target,
         "action": action,
         "voice": voice,

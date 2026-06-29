@@ -18,12 +18,12 @@ def test_run_ticks_is_deterministic():
     a = run_ticks(World(rng=random.Random(1)), 30)
     b = run_ticks(World(rng=random.Random(1)), 30)
     assert a["t"] == b["t"]
-    assert a["lili"] == b["lili"]
+    assert a["agent"] == b["agent"]
     assert a["log"] == b["log"]
 
 
 def test_world_lives_headless():
-    # over many ticks Лілі visits >=2 rooms, acts >=1, and speaks >=1 line —
+    # over many ticks the agent visits >=2 rooms, acts >=1, and speaks >=1 line —
     # entirely headless (no client, no network, no model call).
     world = World(rng=random.Random(0))
     rooms_visited = set()
@@ -31,8 +31,8 @@ def test_world_lives_headless():
     for _ in range(150):
         world.tick()
         s = world.state
-        rooms_visited.add(room_at(s["lili"]["x"], s["lili"]["y"]))
-        if s["lili"]["acting"]:
+        rooms_visited.add(room_at(s["agent"]["x"], s["agent"]["y"]))
+        if s["agent"]["acting"]:
             acted = True
     assert len(rooms_visited) >= 2
     assert acted

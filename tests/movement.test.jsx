@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
-import LiliHouseAITown, {
+import AgentHouseAITown, {
   dirForKey,
   tryMove,
   isTypingTarget,
@@ -61,7 +61,7 @@ describe("HVN-010 — keyboard movement (mounted)", () => {
     c.querySelector('[data-sprite="ти"]').getAttribute("transform");
 
   it("walks the player one cell on an arrow/WASD key", () => {
-    const { container } = render(<LiliHouseAITown />);
+    const { container } = render(<AgentHouseAITown />);
     // starts in the office at (22,8)
     expect(playerTransform(container)).toBe(`translate(${22 * TILE}, ${8 * TILE})`);
     fireEvent.keyDown(window, { key: "ArrowLeft" });
@@ -71,7 +71,7 @@ describe("HVN-010 — keyboard movement (mounted)", () => {
   });
 
   it("ignores movement keys while a text field is focused", () => {
-    const { container } = render(<LiliHouseAITown />);
+    const { container } = render(<AgentHouseAITown />);
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();

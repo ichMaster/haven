@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  askLili,
+  askAgent,
   CHAT_MODEL,
   CHAT_MAX_TOKENS,
   buildSystemPrompt,
-  LILI_CANON,
+  AGENT_CANON,
 } from "../lili_house_aitown.jsx";
 
 // A fake Anthropic client that captures the request and returns a canned reply.
@@ -21,9 +21,9 @@ function fakeClient(reply = "Привіт!") {
   };
 }
 
-const ctx = { liliRoom: "art", liliAction: "малює (Майстерня Лілі)", youRoom: "office", together: false };
+const ctx = { agentRoom: "art", agentAction: "малює (Майстерня Лілі)", youRoom: "office", together: false };
 
-describe("HVN-013 — frontend Claude chat client (askLili)", () => {
+describe("HVN-013 — frontend Claude chat client (askAgent)", () => {
   it("CHAT_MODEL defaults to the main model; max_tokens is small", () => {
     expect(CHAT_MODEL).toBe("claude-opus-4-8");
     expect(CHAT_MAX_TOKENS).toBeLessThanOrEqual(1000);
@@ -31,7 +31,7 @@ describe("HVN-013 — frontend Claude chat client (askLili)", () => {
 
   it("returns Лілі's reply text", async () => {
     const client = fakeClient("Усе добре, малюю.");
-    const reply = await askLili({ text: "Як справи?", context: ctx, client });
+    const reply = await askAgent({ text: "Як справи?", context: ctx, client });
     expect(reply).toBe("Усе добре, малюю.");
   });
 
@@ -41,13 +41,13 @@ describe("HVN-013 — frontend Claude chat client (askLili)", () => {
       { role: "user", content: "Привіт" },
       { role: "assistant", content: "Вітаю!" },
     ];
-    await askLili({ text: "Що малюєш?", context: ctx, history, client });
+    await askAgent({ text: "Що малюєш?", context: ctx, history, client });
 
     const args = client.calls[0];
     expect(args.model).toBe(CHAT_MODEL);
     expect(args.max_tokens).toBe(CHAT_MAX_TOKENS);
     expect(args.system).toBe(buildSystemPrompt(ctx));
-    expect(args.system).toContain(LILI_CANON);
+    expect(args.system).toContain(AGENT_CANON);
     // history + new user turn, in order; no trailing assistant prefill
     expect(args.messages).toEqual([
       { role: "user", content: "Привіт" },
@@ -59,7 +59,7 @@ describe("HVN-013 — frontend Claude chat client (askLili)", () => {
 
   it("defaults to an empty history (only the user turn)", async () => {
     const client = fakeClient();
-    await askLili({ text: "Привіт", context: ctx, client });
+    await askAgent({ text: "Привіт", context: ctx, client });
     expect(client.calls[0].messages).toEqual([{ role: "user", content: "Привіт" }]);
   });
 
@@ -71,11 +71,11 @@ describe("HVN-013 — frontend Claude chat client (askLili)", () => {
         }),
       },
     };
-    expect(await askLili({ text: "x", context: ctx, client })).toBe("Ось відповідь.");
+    expect(await askAgent({ text: "x", context: ctx, client })).toBe("Ось відповідь.");
   });
 
   it("returns an empty string when there is no text block", async () => {
     const client = { messages: { create: async () => ({ content: [] }) } };
-    expect(await askLili({ text: "x", context: ctx, client })).toBe("");
+    expect(await askAgent({ text: "x", context: ctx, client })).toBe("");
   });
 });

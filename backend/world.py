@@ -6,12 +6,14 @@ values are reproduced exactly. The backend reasons only in integer grid cells.
 
 from __future__ import annotations
 
+from .config import AGENT_NAME
+
 W = 29  # columns
 H = 15  # rows
 
 # Letter → room-key map for the carved rectangles.
 LETTER = {
-    "A": "art",  # Майстерня Лілі (studio)
+    "A": "art",  # the agent's studio
     "K": "kitchen",  # Кухня
     "H": "hall",  # Хол (hub-spine)
     "S": "sleep",  # Наша спальня (bedroom)
@@ -109,11 +111,14 @@ ROOMS = {
         "desc": "Твій кабінет: книги, тепле світло лампи й крісло, у якому добре думається.",
     },
     "art": {
-        "name": "Майстерня Лілі",
+        "name": f"Майстерня {AGENT_NAME}",
         "floor": "#e6d6f2",
         "color": "#7a52b0",
         "verb": "малює",
-        "desc": "Майстерня Лілі: запах фарби, полотна під вікном і світло, що тече на мольберт.",
+        "desc": (
+            f"Майстерня {AGENT_NAME}: запах фарби, полотна під вікном "
+            "і світло, що тече на мольберт."
+        ),
     },
     "sleep": {
         "name": "Наша спальня",
@@ -138,7 +143,7 @@ ROOMS = {
     },
 }
 
-# Interactive drive targets — the cell Лілі walks to and acts on.
+# Interactive drive targets — the cell the agent walks to and acts on.
 OBJECTS = [
     {"x": 5, "y": 3, "glyph": "🎨", "room": "art"},
     {"x": 22, "y": 2, "glyph": "🛏️", "room": "sleep"},

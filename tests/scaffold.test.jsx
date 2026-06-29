@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
-import LiliHouseAITown, {
+import AgentHouseAITown, {
   W,
   H,
   TILE,
@@ -32,7 +32,7 @@ describe("HVN-001 — scaffold & technical basis", () => {
   });
 
   it("mounts and renders a scaled SVG canvas", () => {
-    const { container } = render(<LiliHouseAITown />);
+    const { container } = render(<AgentHouseAITown />);
     const svg = container.querySelector("svg");
     expect(svg).toBeTruthy();
     expect(svg.getAttribute("viewBox")).toBe("0 0 696 360");

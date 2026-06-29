@@ -75,7 +75,7 @@ def pick_target(drives: dict[str, float], user_room: str | None = None) -> dict 
     """Pick the OBJECTS target for the lowest drive's room.
 
     Special case: when the lowest drive is ``warmth`` and the user is in the
-    office, Лілі comes to you — the target becomes the office object. In v1.1
+    office, the agent comes to you — the target becomes the office object. In v1.1
     there is no player, so ``user_room`` is ``None`` and the override is inert
     (it activates in v1.3).
     """
