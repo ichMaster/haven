@@ -5,9 +5,10 @@ characters live in a multi-room home by their own drives; you are present as you
 character, walk the same space, and talk to them in character. They live whether or not
 you interact.
 
-> **Status: v0.1 — graphical prototype.** The whole world runs in the browser as a single
-> self-contained React file, with no backend yet. From v1 a Python/FastAPI backend owns the
-> simulation and the React app becomes a thin client. See [specification/ROADMAP.md](specification/ROADMAP.md).
+> **Status: v1.1.0 — headless backend.** The v0 graphical prototype runs the whole world in
+> the browser as a single self-contained React file; v1.1 adds a headless Python backend that
+> owns and ticks the world with no client. From v2 a FastAPI REST layer is added and the React
+> app becomes a thin client. See [specification/ROADMAP.md](specification/ROADMAP.md).
 
 Лілі is the first inhabitant. In-app text (room names, her voice) is **Ukrainian** by design.
 

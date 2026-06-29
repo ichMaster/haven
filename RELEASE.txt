@@ -1,0 +1,17 @@
+Haven — Release Notes
+=====================
+
+Version 1.1.0 (2026-06-29)
+---------------------------
+- Headless Python backend (/backend): ports the v0 world to a server that owns
+  and ticks the simulation with no client — floor plan, walkable/room grids,
+  drives, pick_target, BFS navigation, the per-tick decision loop, and the world
+  clock (roadmap phase v1.1, HVN-016…021).
+- Fixed-interval asyncio tick loop + deterministic mock-clock harness;
+  `python -m backend` runs the living world headless. The Anthropic key is held
+  server-side only (unused until v1.4).
+- Configurable agent display name: HAVEN_AGENT_NAME (backend) and
+  VITE_AGENT_NAME (frontend); lili-specific identifiers generalized to agent.
+- First tagged release. Also bundles the v0 browser prototype: graphical home,
+  autonomous agent, smooth (non-teleporting) interpolation, and frontend-only
+  in-character chat.

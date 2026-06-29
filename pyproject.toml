@@ -1,6 +1,6 @@
 [project]
 name = "haven-backend"
-version = "0.0.0"
+version = "1.1.0"
 description = "Haven backend — headless world, simulation, and (from v1.2) terminal server."
 requires-python = ">=3.11"
 

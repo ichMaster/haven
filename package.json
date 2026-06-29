@@ -1,7 +1,7 @@
 {
   "name": "haven-prototype",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Haven v0 graphical prototype — single self-contained React file (lili_house_aitown.jsx).",
   "scripts": {
